@@ -1,2 +1,3 @@
 https://packaging.python.org/en/latest/tutorials/packaging-projects/
 https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+https://docs.python-guide.org/writing/structure/
