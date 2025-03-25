@@ -1,0 +1,21 @@
+[project]
+name = "image-gen-htd-amg"
+version = "0.0.1"
+authors = [
+  { name="Héctor Tablero Díaz", email="hector.tablerodiaz@gmail.com" },
+  { name="Álvaro Martínez Gamo", email="alva00003@gmail.com" },
+]
+description = "A package for generating images with diffusion"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = []
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/HectorTablero/image-gen"
+Issues = "https://github.com/HectorTablero/image-gen/issues"
