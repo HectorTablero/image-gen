@@ -1,20 +1,18 @@
 from abc import ABC, abstractmethod
+from ..noise import BaseNoiseSchedule
+from torch import Tensor
+from typing import Tuple
 
 
 class BaseDiffusion(ABC):
-    """Abstract base class for diffusion processes"""
+    def __init__(self, schedule: BaseNoiseSchedule):
+        self.schedule = schedule
+        self.max_t: int = schedule.max_t
 
     @abstractmethod
-    def forward_process(self, x, t):
-        """Apply forward diffusion process"""
-        pass
+    def forward_sde(self, x: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+        ...
 
     @abstractmethod
-    def reverse_process(self, x, t):
-        """Apply reverse diffusion process"""
-        pass
-
-    @abstractmethod
-    def get_schedule(self, t):
-        """Get noise schedule parameters for time step t"""
-        pass
+    def forward_process(self, x0: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+        ...
