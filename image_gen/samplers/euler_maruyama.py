@@ -1,12 +1,64 @@
 from .base import BaseSampler
 import torch
 from torch import Tensor
+from typing import Callable, Tuple, Optional
+from tqdm.autonotebook import tqdm
 import numpy as np
 
 
 class EulerMaruyama(BaseSampler):
-    def step(self, x: Tensor, t: Tensor, score: Tensor) -> Tensor:
-        drift, diffusion = self.diffusion.forward_sde(x, t)
-        adj_drift = drift - diffusion**2 * score
-        noise = torch.randn_like(x)
-        return x + adj_drift * self.dt + diffusion * np.sqrt(self.dt) * noise
+    def __call__(
+        self,
+        x_T: Tensor,
+        score_model: Callable,
+        n_steps: int = 500,
+        seed: Optional[int] = None,
+    ) -> Tensor:
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        device = x_T.device
+        x_t = x_T.clone()
+
+        times = torch.linspace(1.0, 1e-3, n_steps+1, device=device)
+        dt = times[0] - times[1]
+
+        for i in tqdm(range(n_steps), desc='Generating'):
+            t_curr = times[i]
+
+            t_batch = torch.full((x_T.shape[0],), t_curr, device=device)
+
+            t_for_score = t_batch
+
+            if torch.isnan(x_t).any() or torch.isinf(x_t).any():
+                print(
+                    f"Warning: NaN or Inf values detected in x_t at step {i}")
+                x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
+
+            try:
+                score = score_model(x_t, t_for_score)
+
+                if torch.isnan(score).any():
+                    print(
+                        f"Warning: NaN values in score at step {i}, t={t_curr}")
+                    score = torch.nan_to_num(score, nan=0.0)
+            except Exception as e:
+                print(f"Error computing score at step {i}, t={t_curr}: {e}")
+                score = torch.zeros_like(x_t)
+
+            drift, diffusion = self.diffusion.backward_sde(x_t, t_batch, score)
+
+            diffusion = torch.nan_to_num(diffusion, nan=1e-4)
+
+            noise = torch.randn_like(x_t)
+
+            x_t = x_t + drift * (-dt) + diffusion * \
+                torch.sqrt(torch.abs(dt)) * noise
+
+            x_t = torch.clamp(x_t, -10.0, 10.0)
+
+            if i % 50 == 0 or torch.isnan(x_t).any():
+                print(
+                    f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
+
+        return x_t

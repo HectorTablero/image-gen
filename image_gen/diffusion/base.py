@@ -16,3 +16,11 @@ class BaseDiffusion(ABC):
     @abstractmethod
     def forward_process(self, x0: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
         ...
+
+    def backward_sde(self, x: Tensor, t: Tensor, score: Tensor) -> Tensor:
+        f, g = self.forward_sde(x, t)
+        g_squared = g**2
+        if g_squared.shape != score.shape:
+            g_squared = g_squared.expand_as(score)
+
+        return f - g_squared * score, g

@@ -1,8 +1,7 @@
 from .diffusion import BaseDiffusion
 from .samplers import BaseSampler
-from .noise import BaseNoiseSchedule
 from .score_model import ScoreNet
-from typing import Optional, List
+from typing import Optional
 import torch
 from torch.optim import Adam
 from torch import Tensor
@@ -13,47 +12,49 @@ class GenerativeModel(torch.nn.Module):
     def __init__(self,
                  diffusion: BaseDiffusion,
                  sampler: BaseSampler,
-                 noise_schedule: BaseNoiseSchedule,
                  model: Optional[torch.nn.Module] = None,
                  image_size: tuple = (32, 32)):
         super().__init__()
-        self.schedule = noise_schedule
         self.diffusion = diffusion
         self.sampler = sampler
         self.shape = image_size
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = model if model else self._build_default_model()
+        if model:
+            self.model = model
+        else:
+            self._build_default_model()
 
+    def _build_default_model(self, shape=(3, 32, 32)) -> ScoreNet:
+        self.num_c = shape[0]
+        self.shape = (shape[1], shape[2])
+        self.model = ScoreNet(
+            marginal_prob_std=self.diffusion.schedule, num_c=shape[0])
         if self.device.type == "cuda":
             self.model = torch.nn.DataParallel(self.model)
         self.model = self.model.to(self.device)
 
-    def _build_default_model(self) -> ScoreNet:
-        return ScoreNet(marginal_prob_std=self.schedule)
-
     def forward(self, x: Tensor, t: Tensor) -> Tensor:
-        t_embed = t.float() / self.schedule.max_t
-        t_embed = t_embed.view(-1, 1, 1, 1).expand(-1, 1, *self.shape)
-        x = torch.cat([x, t_embed], dim=1)
-        return self.model(x)
+        return self.model(x, t)
 
     def loss_function(self, x0: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
         t = torch.rand(x0.shape[0], device=x0.device) * (1.0 - eps) + eps
-        t_scaled = t * self.schedule.max_t
 
-        xt, noise = self.diffusion.forward_process(x0, t_scaled)
+        xt, noise = self.diffusion.forward_process(x0, t)
 
-        score = self.model(xt, t_scaled)
+        score = self.model(xt, t)
 
-        beta_t = self.diffusion.schedule(t_scaled).view(
+        beta_t = self.diffusion.schedule(t).view(
             x0.shape[0], *([1]*(x0.dim()-1)))
         mse_per_example = torch.sum(
-            (beta_t * score + noise)**2, dim=[1, 2, 3])
+            (beta_t * score + noise)**2, dim=list(range(1, x0.dim())))
         return torch.mean(mse_per_example)
 
-    def train(self, dataset, epochs=100, batch_size=32, lr=1e-4):
+    def train(self, dataset, epochs=100, batch_size=32, lr=1e-3):
+        first = dataset[0]
+        first = first[0] if isinstance(first, (list, tuple)) else first
+        self._build_default_model(shape=first.shape)
         optimizer = Adam(self.model.parameters(), lr=lr)
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=True)
@@ -79,17 +80,24 @@ class GenerativeModel(torch.nn.Module):
 
             epoch_bar.set_postfix(avg_loss=avg_loss/num_items)
 
-    def generate(self, num_samples: int) -> torch.Tensor:
-        """Generation with automatic device handling"""
-        xt = torch.randn(num_samples, 3, *self.shape, device=self.device)
+    def generate(self, num_samples: int, n_steps: int = 500, seed: int = 0) -> torch.Tensor:
+        device = next(self.model.parameters()).device
+        x_T = torch.randn(num_samples, self.num_c, *self.shape, device=device)
 
-        for t in tqdm(range(self.schedule.max_t),
-                      desc='Generating'):
-            t_tensor = torch.full((num_samples,), t, device=self.device)
-            score = self.model(xt, t_tensor)
-            xt = self.sampler.step(xt, t, score)
+        self.model.eval()
+        with torch.no_grad():
+            samples = self.sampler(
+                x_T=x_T,
+                score_model=self.model,
+                n_steps=n_steps,
+                seed=seed
+            )
 
-        return xt.clamp(-1, 1)
+        self.model.train()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return (samples.clamp(-1, 1) + 1) / 2
 
     def save(self, path: str):
         torch.save({
@@ -101,8 +109,25 @@ class GenerativeModel(torch.nn.Module):
 
     def load(self, path: str):
         checkpoint = torch.load(path)
-        self.model.load_state_dict(checkpoint['model_state'])
+        checkpoint_channels = checkpoint.get(
+            'num_channels', 1)  # Default to 1 if not specified
         self.shape = checkpoint.get('shape', (32, 32))
+
+        # Check if we need to rebuild the model with the correct number of channels
+        if not hasattr(self, 'model') or not hasattr(self, 'num_c') or self.num_c != checkpoint_channels:
+            print(
+                f"Rebuilding model to match checkpoint channels: {checkpoint_channels}")
+            self._build_default_model(shape=(checkpoint_channels, *self.shape))
+
+        try:
+            # First try regular loading
+            self.model.load_state_dict(checkpoint['model_state'])
+        except RuntimeError as e:
+            print(f"Warning: Failed to load model state with error: {e}")
+            print("Attempting to load with channel adaptation...")
+
+            # If that fails, try partial loading with adaptation
+            self._load_with_channel_adaptation(checkpoint['model_state'])
 
         if not hasattr(self, 'diffusion'):
             self.diffusion = BaseDiffusion.from_config(
@@ -110,3 +135,67 @@ class GenerativeModel(torch.nn.Module):
         if not hasattr(self, 'sampler'):
             self.sampler = BaseSampler.from_config(
                 checkpoint['sampler_config'])
+
+    def _load_with_channel_adaptation(self, state_dict):
+        """Load state dict with adaptation for different channel counts."""
+        current_state = self.model.state_dict()
+
+        # Filter and potentially adapt weights
+        adapted_state = {}
+        for key, checkpoint_param in state_dict.items():
+            if key in current_state:
+                current_param = current_state[key]
+
+                # If shapes match exactly, use as is
+                if checkpoint_param.shape == current_param.shape:
+                    adapted_state[key] = checkpoint_param
+                    continue
+
+                # Handle first conv layer (input channels adaptation)
+                if 'conv1.weight' in key:
+                    if current_param.shape[1] > checkpoint_param.shape[1]:
+                        # RGB model loading grayscale weights
+                        # Repeat the grayscale channel across RGB
+                        adapted_param = checkpoint_param.repeat(
+                            1, current_param.shape[1], 1, 1)
+                        # Normalize to maintain the same magnitude
+                        adapted_param = adapted_param / current_param.shape[1]
+                        adapted_state[key] = adapted_param
+                    else:
+                        # Skip this case (can't adapt from RGB to grayscale)
+                        print(
+                            f"Skipping {key}: can't adapt from more to fewer channels")
+
+                # Handle final conv/tconv layer (output channels adaptation)
+                elif 'tconv1.weight' in key or 'tconv1.bias' in key:
+                    if 'weight' in key:
+                        if current_param.shape[0] > checkpoint_param.shape[0]:
+                            # Repeat the single channel for RGB output
+                            adapted_param = checkpoint_param.repeat(
+                                current_param.shape[0], 1, 1, 1)
+                            adapted_state[key] = adapted_param
+                        else:
+                            # Use just the first channel if going from RGB to grayscale
+                            adapted_state[key] = checkpoint_param[:current_param.shape[0]]
+                    elif 'bias' in key:
+                        if current_param.shape[0] > checkpoint_param.shape[0]:
+                            # Repeat bias for RGB
+                            adapted_state[key] = checkpoint_param.repeat(
+                                current_param.shape[0])
+                        else:
+                            # Use subset of bias values
+                            adapted_state[key] = checkpoint_param[:current_param.shape[0]]
+
+                # For other layers, if dimensions don't match, skip
+                else:
+                    print(
+                        f"Skipping {key}: shape mismatch - checkpoint {checkpoint_param.shape} vs model {current_param.shape}")
+            else:
+                print(f"Parameter {key} not found in current model")
+
+        # Load the adapted state dict
+        if adapted_state:
+            # Use strict=False to load partial state dict
+            self.model.load_state_dict(adapted_state, strict=False)
+            print(
+                f"Loaded {len(adapted_state)}/{len(state_dict)} parameters with adaptation")

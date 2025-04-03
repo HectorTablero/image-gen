@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Callable, Tuple
 import torch
 from torch import Tensor
 
@@ -11,7 +11,12 @@ class BaseSampler(ABC):
         self.dt = 1.0 / num_steps
 
     @abstractmethod
-    def step(self, x: Tensor, t: Tensor, score: Tensor) -> Tensor:
+    def __call__(self,
+                 x_T: Tensor,
+                 score_model: Callable,
+                 n_steps: int = 500,
+                 seed: Optional[int] = None,
+                 ) -> Tuple[Tensor, Tensor]:
         ...
 
     def timesteps(self, reverse: bool = True):

@@ -11,17 +11,29 @@ class VariancePreserving(BaseDiffusion):
         self._precompute_beta_integral()
 
     def _precompute_beta_integral(self):
-        t_values = torch.arange(self.schedule.max_t + 1)
+        t_values = torch.linspace(0, self.schedule.max_t, int(self.schedule.max_t) + 1,
+                                  device=self.schedule(torch.tensor(0.0)).device)
         beta_values = self.schedule(t_values)
-        self.beta_integral: Tensor = torch.cumsum(
-            beta_values * (1/self.schedule.max_t), dim=0)
+
+        self.beta_integral = torch.cumsum(
+            beta_values * (1.0 / len(t_values) * self.schedule.max_t), dim=0)
 
     def forward_sde(self, x: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
         beta_t = self.schedule(t)
-        return -0.5 * beta_t * x, torch.sqrt(beta_t)
+        drift = -0.5 * beta_t.view(-1, 1, 1, 1) * x
+        diffusion = torch.sqrt(beta_t).view(-1, 1, 1, 1)
+        return drift, diffusion
 
     def forward_process(self, x0: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-        beta_int = self.beta_integral[t.long()]
+        t_scaled = (t / self.schedule.max_t * len(self.beta_integral) -
+                    1).clamp(0, len(self.beta_integral) - 1)
+        t_indices = t_scaled.long()
+
+        beta_int = self.beta_integral.to(
+            x0.device)[t_indices].view(-1, 1, 1, 1)
         mean = x0 * torch.exp(-0.5 * beta_int)
-        std = torch.sqrt(1 - torch.exp(-beta_int))
-        return mean + std * torch.randn_like(x0), std
+        sigma_t = torch.sqrt(1 - torch.exp(-beta_int))
+        sigma = sigma_t.view(x0.shape[0], *([1] * (x0.dim() - 1)))
+        noise = torch.randn_like(x0)
+        xt = mean + sigma * noise
+        return xt, noise
