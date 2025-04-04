@@ -1,9 +1,8 @@
 from .base import BaseSampler
 import torch
 from torch import Tensor
-from typing import Callable, Tuple, Optional
+from typing import Callable, Optional
 from tqdm.autonotebook import tqdm
-import numpy as np
 
 
 class EulerMaruyama(BaseSampler):
@@ -13,6 +12,8 @@ class EulerMaruyama(BaseSampler):
         score_model: Callable,
         n_steps: int = 500,
         seed: Optional[int] = None,
+        callback: Optional[Callable[[Tensor, int], None]] = None,
+        callback_frequency: int = 50,
     ) -> Tensor:
         if seed is not None:
             torch.manual_seed(seed)
@@ -23,7 +24,10 @@ class EulerMaruyama(BaseSampler):
         times = torch.linspace(1.0, 1e-3, n_steps+1, device=device)
         dt = times[0] - times[1]
 
-        for i in tqdm(range(n_steps), desc='Generating'):
+        iterable = tqdm(
+            range(n_steps), desc='Generating') if self.verbose else range(n_steps)
+
+        for i in iterable:
             t_curr = times[i]
 
             t_batch = torch.full((x_T.shape[0],), t_curr, device=device)
@@ -31,16 +35,18 @@ class EulerMaruyama(BaseSampler):
             t_for_score = t_batch
 
             if torch.isnan(x_t).any() or torch.isinf(x_t).any():
-                print(
-                    f"Warning: NaN or Inf values detected in x_t at step {i}")
+                if self.verbose:
+                    print(
+                        f"Warning: NaN or Inf values detected in x_t at step {i}")
                 x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
 
             try:
                 score = score_model(x_t, t_for_score)
 
                 if torch.isnan(score).any():
-                    print(
-                        f"Warning: NaN values in score at step {i}, t={t_curr}")
+                    if self.verbose:
+                        print(
+                            f"Warning: NaN values in score at step {i}, t={t_curr}")
                     score = torch.nan_to_num(score, nan=0.0)
             except Exception as e:
                 print(f"Error computing score at step {i}, t={t_curr}: {e}")
@@ -57,8 +63,11 @@ class EulerMaruyama(BaseSampler):
 
             x_t = torch.clamp(x_t, -10.0, 10.0)
 
-            if i % 50 == 0 or torch.isnan(x_t).any():
+            if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
                 print(
                     f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
+
+            if callback and i % callback_frequency == 0:
+                callback(x_t.detach().clone(), i)
 
         return x_t

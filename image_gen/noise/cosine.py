@@ -30,3 +30,10 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
         beta_t = beta_t.clamp(1e-5, self.beta_max)
 
         return beta_t
+
+    def config(self) -> dict:
+        return {
+            "max_t": self.max_t,
+            "s": self.s,
+            "beta_max": self.beta_max,
+        }

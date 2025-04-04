@@ -12,3 +12,10 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
     def __call__(self, t: Tensor) -> Tensor:
         t_norm = (t / self.max_t).clamp(0.0, 1.0)
         return self.beta_min + t_norm * (self.beta_max - self.beta_min)
+
+    def config(self) -> dict:
+        return {
+            "max_t": self.max_t,
+            "beta_min": self.beta_min,
+            "beta_max": self.beta_max,
+        }

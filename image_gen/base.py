@@ -2,7 +2,7 @@ from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, Sub
 from .samplers import BaseSampler, EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
 from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
 from .score_model import ScoreNet
-from typing import Optional, Union, Literal
+from typing import Callable, Optional, Union, Literal
 import torch
 from torch.optim import Adam
 from torch import Tensor
@@ -10,17 +10,19 @@ from tqdm.autonotebook import tqdm
 import warnings
 
 
-class GenerativeModel(torch.nn.Module):
+class GenerativeModel:
     def __init__(self,
                  diffusion: Optional[Union[BaseDiffusion, type,
                                            Literal["ve", "vp", "sub-vp"]]] = "ve",
                  sampler: Optional[Union[BaseSampler, type,
                                          Literal["euler-maruyama", "exponential", "ode", "predictor-corrector"]]] = "euler-maruyama",
-                 noise_schedule: Optional[Union[BaseNoiseSchedule, type, Literal["linear", "cosine"]]] = None):
-        super().__init__()
+                 noise_schedule: Optional[Union[BaseNoiseSchedule,
+                                                type, Literal["linear", "cosine"]]] = None,
+                 verbose: bool = True) -> None:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
+        self.verbose = verbose
 
         diffusion_map = {
             "ve": VarianceExploding,
@@ -95,6 +97,10 @@ class GenerativeModel(torch.nn.Module):
             self.sampler = sampler(self.diffusion)
         else:
             self.sampler = sampler
+        self.sampler.verbose = verbose
+
+    def _progress(self, iterable, **kwargs):
+        return tqdm(iterable, **kwargs) if self.verbose else iterable
 
     def _build_default_model(self, shape=(3, 32, 32)) -> ScoreNet:
         self.num_c = shape[0]
@@ -129,12 +135,13 @@ class GenerativeModel(torch.nn.Module):
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=True)
 
-        epoch_bar = tqdm(range(epochs), desc='Training')
+        epoch_bar = self._progress(range(epochs), desc='Training')
         for epoch in epoch_bar:
             avg_loss = 0.0
             num_items = 0
 
-            batch_bar = tqdm(dataloader, desc=f'Epoch {epoch+1}', leave=False)
+            batch_bar = self._progress(
+                dataloader, desc=f'Epoch {epoch+1}', leave=False)
             for batch in batch_bar:
                 x0 = batch[0] if isinstance(batch, (list, tuple)) else batch
                 x0 = x0.to(self.device)
@@ -150,10 +157,17 @@ class GenerativeModel(torch.nn.Module):
 
             epoch_bar.set_postfix(avg_loss=avg_loss/num_items)
 
-    def generate(self, num_samples: int, n_steps: int = 500, seed: int = 0) -> torch.Tensor:
+    def generate(self,
+                 num_samples: int,
+                 n_steps: int = 500,
+                 seed: int = 0,
+                 selected_class: Optional[int] = None,
+                 progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> torch.Tensor:
         if not hasattr(self, 'model') or self.model is None:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
+
+        # TODO: Add class-conditional generation support
 
         device = next(self.model.parameters()).device
         x_T = torch.randn(num_samples, self.num_c, *self.shape, device=device)
@@ -164,25 +178,94 @@ class GenerativeModel(torch.nn.Module):
                 x_T=x_T,
                 score_model=self.model,
                 n_steps=n_steps,
-                seed=seed
+                seed=seed,
+                callback=progress_callback
             )
 
         self.model.train()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        return (samples.clamp(-1, 1) + 1) / 2
+        return samples
+
+    def colorize(self, x: Tensor) -> Tensor:
+        # TODO: Implement colorization logic
+        pass
+
+    def imputation(self, x: Tensor, mask: Tensor) -> Tensor:
+        # TODO: Implement imputation logic
+        pass
 
     def save(self, path: str):
-        torch.save({
+        save_data = {
             'model_state': self.model.state_dict(),
-            # 'diffusion_config': self.diffusion.config(),
-            # 'sampler_config': self.sampler.config(),
-            'shape': self.shape
-        }, path)
+            'shape': self.shape,
+            'diffusion_type': self.diffusion.__class__.__name__.lower(),
+            'sampler_type': self.sampler.__class__.__name__.lower(),
+        }
+
+        if hasattr(self.diffusion, 'config'):
+            save_data['diffusion_config'] = self.diffusion.config()
+
+        if self.diffusion.NEEDS_NOISE_SCHEDULE:
+            save_data['noise_schedule_type'] = self.diffusion.schedule.__class__.__name__.lower()
+            if hasattr(self.diffusion.schedule, 'config'):
+                save_data['noise_schedule_config'] = self.diffusion.schedule.config()
+
+        torch.save(save_data, path)
+
+    def _rebuild_diffusion(self, checkpoint: dict):
+        diffusion_map = {
+            VarianceExploding.__name__.lower(): VarianceExploding,
+            VariancePreserving.__name__.lower(): VariancePreserving,
+            SubVariancePreserving.__name__.lower(): SubVariancePreserving,
+        }
+
+        diff_type = checkpoint.get('diffusion_type', 've')
+        diffusion_cls = diffusion_map[diff_type]
+
+        schedule = None
+        if diffusion_cls.NEEDS_NOISE_SCHEDULE:
+            schedule = self._rebuild_noise_schedule(checkpoint)
+
+        config = checkpoint.get('diffusion_config', {})
+
+        if diffusion_cls.NEEDS_NOISE_SCHEDULE:
+            self.diffusion = diffusion_cls(schedule, **config)
+        else:
+            self.diffusion = diffusion_cls(**config)
+
+    def _rebuild_noise_schedule(self, checkpoint: dict) -> BaseNoiseSchedule:
+        schedule_map = {
+            LinearNoiseSchedule.__name__.lower(): LinearNoiseSchedule,
+            CosineNoiseSchedule.__name__.lower(): CosineNoiseSchedule,
+        }
+
+        schedule_type = checkpoint.get('noise_schedule_type', 'linear')
+        schedule_cls = schedule_map[schedule_type]
+        config = checkpoint.get('noise_schedule_config', {})
+        return schedule_cls(**config)
+
+    def _rebuild_sampler(self, checkpoint: dict):
+        sampler_map = {
+            EulerMaruyama.__name__.lower(): EulerMaruyama,
+            ExponentialIntegrator.__name__.lower(): ExponentialIntegrator,
+            ODEProbabilityFlow.__name__.lower(): ODEProbabilityFlow,
+            PredictorCorrector.__name__.lower(): PredictorCorrector,
+        }
+
+        sampler_type = checkpoint.get('sampler_type', 'euler-maruyama')
+        sampler_cls = sampler_map[sampler_type]
+        self.sampler = sampler_cls(self.diffusion, verbose=self.verbose)
 
     def load(self, path: str):
         checkpoint = torch.load(path)
+
+        self._rebuild_diffusion(checkpoint)
+        self._rebuild_sampler(checkpoint)
+
+        print(checkpoint)
+
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to 1 if not specified
         self.shape = checkpoint.get('shape', (32, 32))
@@ -273,3 +356,17 @@ class GenerativeModel(torch.nn.Module):
             self.model.load_state_dict(adapted_state, strict=False)
             print(
                 f"Loaded {len(adapted_state)}/{len(state_dict)} parameters with adaptation")
+
+    def __str__(self) -> str:
+        components = [
+            f"Input shape: {getattr(self, 'shape', 'Not initialized')}",
+            f"Channels: {getattr(self, 'num_c', 'Not initialized')}",
+            f"Diffusion: {str(self.diffusion) if hasattr(self, 'diffusion') else 'None'}",
+            f"Sampler: {str(self.sampler) if hasattr(self, 'sampler') else 'None'}"
+        ]
+
+        if hasattr(self, 'diffusion') and self.diffusion.NEEDS_NOISE_SCHEDULE:
+            components.insert(
+                3, f"Noise Schedule: {str(self.diffusion.schedule)}")
+
+        return "GenerativeModel(\n    " + "\n    ".join(components) + "\n)"

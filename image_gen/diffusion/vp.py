@@ -37,3 +37,6 @@ class VariancePreserving(BaseDiffusion):
         noise = torch.randn_like(x0)
         xt = mean + sigma * noise
         return xt, noise
+
+    def config(self) -> dict:
+        return {}

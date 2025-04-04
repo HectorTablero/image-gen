@@ -5,10 +5,9 @@ from torch import Tensor
 
 
 class BaseSampler(ABC):
-    def __init__(self, diffusion, num_steps: Optional[int] = 1000):
+    def __init__(self, diffusion, verbose: bool = True):
         self.diffusion = diffusion
-        self.num_steps = num_steps
-        self.dt = 1.0 / num_steps
+        self.verbose = verbose
 
     @abstractmethod
     def __call__(self,
@@ -16,5 +15,10 @@ class BaseSampler(ABC):
                  score_model: Callable,
                  n_steps: int = 500,
                  seed: Optional[int] = None,
+                 callback: Optional[Callable[[Tensor, int], None]] = None,
+                 callback_frequency: int = 50,
                  ) -> Tuple[Tensor, Tensor]:
         ...
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}()"

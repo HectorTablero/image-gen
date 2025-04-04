@@ -10,3 +10,12 @@ class BaseNoiseSchedule(ABC):
     @abstractmethod
     def __call__(self, t: Tensor) -> Tensor:
         ...
+
+    @abstractmethod
+    def config(self) -> dict:
+        pass
+
+    def __str__(self) -> str:
+        config = self.config()
+        params = ", ".join(f"{k}: {v}" for k, v in config.items())
+        return f"{self.__class__.__name__}({params})"
