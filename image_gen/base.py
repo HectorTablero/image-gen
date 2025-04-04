@@ -1,30 +1,100 @@
-from .diffusion import BaseDiffusion
-from .samplers import BaseSampler
+from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, SubVariancePreserving
+from .samplers import BaseSampler, EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
+from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
 from .score_model import ScoreNet
-from typing import Optional
+from typing import Optional, Union, Literal
 import torch
 from torch.optim import Adam
 from torch import Tensor
 from tqdm.autonotebook import tqdm
+import warnings
 
 
 class GenerativeModel(torch.nn.Module):
     def __init__(self,
-                 diffusion: BaseDiffusion,
-                 sampler: BaseSampler,
-                 model: Optional[torch.nn.Module] = None,
-                 image_size: tuple = (32, 32)):
+                 diffusion: Optional[Union[BaseDiffusion, type,
+                                           Literal["ve", "vp", "sub-vp"]]] = "ve",
+                 sampler: Optional[Union[BaseSampler, type,
+                                         Literal["euler-maruyama", "exponential", "ode", "predictor-corrector"]]] = "euler-maruyama",
+                 noise_schedule: Optional[Union[BaseNoiseSchedule, type, Literal["linear", "cosine"]]] = None):
         super().__init__()
-        self.diffusion = diffusion
-        self.sampler = sampler
-        self.shape = image_size
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
+        self.model = None
 
-        if model:
-            self.model = model
+        diffusion_map = {
+            "ve": VarianceExploding,
+            "vp": VariancePreserving,
+            "sub-vp": SubVariancePreserving,
+        }
+        noise_schedule_map = {
+            "linear": LinearNoiseSchedule,
+            "cosine": CosineNoiseSchedule,
+        }
+        sampler_map = {
+            "euler-maruyama": EulerMaruyama,
+            "exponential": ExponentialIntegrator,
+            "ode": ODEProbabilityFlow,
+            "predictor-corrector": PredictorCorrector,
+        }
+
+        if diffusion is None:
+            diffusion = "ve"
+
+        if isinstance(diffusion, str):
+            diffusion_key = diffusion.lower()
+            try:
+                diffusion = diffusion_map[diffusion_key]
+            except KeyError:
+                raise ValueError(f"Unknown diffusion string: {diffusion}")
+
+        if sampler is None:
+            sampler = "euler-maruyama"
+
+        if isinstance(sampler, str):
+            sampler_key = sampler.lower()
+            try:
+                sampler = sampler_map[sampler_key]
+            except KeyError:
+                raise ValueError(f"Unknown sampler string: {sampler}")
+
+        if noise_schedule is None and ((isinstance(diffusion, type) or isinstance(diffusion, BaseDiffusion)) and diffusion.NEEDS_NOISE_SCHEDULE):
+            noise_schedule = "linear"
+
+        if isinstance(noise_schedule, str):
+            ns_key = noise_schedule.lower()
+            try:
+                noise_schedule = noise_schedule_map[ns_key]
+            except KeyError:
+                raise ValueError(
+                    f"Unknown noise_schedule string: {noise_schedule}")
+
+        if isinstance(diffusion, type):
+            if diffusion.NEEDS_NOISE_SCHEDULE:
+                if isinstance(noise_schedule, type):
+                    ns_inst = noise_schedule()
+                else:
+                    ns_inst = noise_schedule
+                self.diffusion = diffusion(ns_inst)
+            else:
+                if noise_schedule is not None:
+                    warnings.warn(
+                        f"{diffusion.__name__} does not require a noise schedule. The provided noise schedule will be ignored.",
+                        UserWarning
+                    )
+                self.diffusion = diffusion()
         else:
-            self._build_default_model()
+            if not diffusion.NEEDS_NOISE_SCHEDULE and noise_schedule is not None:
+                warnings.warn(
+                    f"{diffusion.__class__.__name__} does not require a noise schedule. The provided noise schedule will be ignored.",
+                    UserWarning
+                )
+            self.diffusion = diffusion
+
+        if isinstance(sampler, type):
+            self.sampler = sampler(self.diffusion)
+        else:
+            self.sampler = sampler
 
     def _build_default_model(self, shape=(3, 32, 32)) -> ScoreNet:
         self.num_c = shape[0]
@@ -81,6 +151,10 @@ class GenerativeModel(torch.nn.Module):
             epoch_bar.set_postfix(avg_loss=avg_loss/num_items)
 
     def generate(self, num_samples: int, n_steps: int = 500, seed: int = 0) -> torch.Tensor:
+        if not hasattr(self, 'model') or self.model is None:
+            raise ValueError(
+                "Model not initialized. Please load or train the model first.")
+
         device = next(self.model.parameters()).device
         x_T = torch.randn(num_samples, self.num_c, *self.shape, device=device)
 

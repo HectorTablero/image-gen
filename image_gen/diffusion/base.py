@@ -5,6 +5,8 @@ from typing import Tuple
 
 
 class BaseDiffusion(ABC):
+    NEEDS_NOISE_SCHEDULE = True
+
     def __init__(self, schedule: BaseNoiseSchedule):
         self.schedule = schedule
         self.max_t: int = schedule.max_t

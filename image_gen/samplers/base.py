@@ -18,7 +18,3 @@ class BaseSampler(ABC):
                  seed: Optional[int] = None,
                  ) -> Tuple[Tensor, Tensor]:
         ...
-
-    def timesteps(self, reverse: bool = True):
-        ts = torch.linspace(0, self.diffusion.schedule.max_t, self.num_steps+1)
-        return ts.flip(0) if reverse else ts

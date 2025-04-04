@@ -17,9 +17,11 @@ class VESchedule(BaseNoiseSchedule):
 
 
 class VarianceExploding(BaseDiffusion):
-    def __init__(self, schedule: BaseNoiseSchedule, sigma: Optional[float] = 25.0):
-        super().__init__(schedule)
-        self.schedule = VESchedule(max_t=schedule.max_t, sigma=sigma)
+    NEEDS_NOISE_SCHEDULE = False
+
+    def __init__(self, max_t: Optional[int] = 1000.0, sigma: Optional[float] = 25.0):
+        self.schedule = VESchedule(max_t=max_t, sigma=sigma)
+        self.max_t = max_t
 
     def forward_sde(self, x: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
         drift = torch.zeros_like(x)
@@ -31,3 +33,7 @@ class VarianceExploding(BaseDiffusion):
         sigma = sigma_t.view(x0.shape[0], *([1] * (x0.dim() - 1)))
         noise = torch.randn_like(x0)
         return x0 + sigma * noise, noise
+
+
+if __name__ == "__main__":
+    v = VESchedule
