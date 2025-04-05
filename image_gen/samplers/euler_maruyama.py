@@ -14,6 +14,7 @@ class EulerMaruyama(BaseSampler):
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
+        guidance: Optional[Callable[[Tensor, Tensor, Tensor], Tensor]] = None
     ) -> Tensor:
         if seed is not None:
             torch.manual_seed(seed)
@@ -41,7 +42,14 @@ class EulerMaruyama(BaseSampler):
                 x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
 
             try:
-                score = score_model(x_t, t_for_score)
+                with torch.enable_grad():
+                    x_t.requires_grad_(True)
+                    score = score_model(x_t, t_for_score)
+
+                    if guidance is not None:
+                        score = guidance(x_t, t_for_score, score)
+
+                    x_t.requires_grad_(False)
 
                 if torch.isnan(score).any():
                     if self.verbose:
@@ -51,6 +59,7 @@ class EulerMaruyama(BaseSampler):
             except Exception as e:
                 print(f"Error computing score at step {i}, t={t_curr}: {e}")
                 score = torch.zeros_like(x_t)
+                x_t.requires_grad_(False)
 
             drift, diffusion = self.diffusion.backward_sde(x_t, t_batch, score)
 

@@ -17,6 +17,8 @@ class BaseSampler(ABC):
                  seed: Optional[int] = None,
                  callback: Optional[Callable[[Tensor, int], None]] = None,
                  callback_frequency: int = 50,
+                 guidance: Optional[Callable[[
+                     Tensor, Tensor, Tensor], Tensor]] = None
                  ) -> Tuple[Tensor, Tensor]:
         ...
 
