@@ -264,8 +264,6 @@ class GenerativeModel:
         self._rebuild_diffusion(checkpoint)
         self._rebuild_sampler(checkpoint)
 
-        print(checkpoint)
-
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to 1 if not specified
         self.shape = checkpoint.get('shape', (32, 32))

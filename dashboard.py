@@ -62,11 +62,10 @@ def model_selection():
     with col1:
         st.header("Load Model")
         uploaded_file = st.file_uploader(
-            "Upload model checkpoint", type=["pt", "pth"])
+            "Upload model checkpoint · Will be copied into the model directory", type=["pt", "pth"])
 
         if 'model_dir' not in st.session_state:
             st.session_state.model_dir = "saved_models"
-            os.makedirs(st.session_state.model_dir, exist_ok=True)
 
         if uploaded_file is not None:
             try:
@@ -106,7 +105,9 @@ def model_selection():
 
         model_dir = st.text_input(
             "Model directory", value=st.session_state.model_dir)
-        st.session_state.model_dir = model_dir
+
+        if model_dir != st.session_state.model_dir:
+            st.session_state.model_dir = model_dir
 
         if st.button("Refresh Model List"):
             pass  # Triggers rerun
@@ -122,7 +123,7 @@ def model_selection():
                     model = GenerativeModel(verbose=False)
                     model.load(model_path)
                     st.session_state.model = model
-                    st.success("Model loaded successfully!")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error loading model: {str(e)}")
 
@@ -131,6 +132,9 @@ def model_selection():
             if st.button("Create directory"):
                 os.makedirs(st.session_state.model_dir, exist_ok=True)
                 st.rerun()
+
+        if st.session_state.model is not None:
+            st.success("Model loaded successfully!")
 
     with col2:
         st.header("Model Information")
@@ -358,12 +362,13 @@ def imputation():
 
 pages = {
     "Management": [
-        st.Page(model_selection, title="Model Selection")
+        st.Page(model_selection, title="Model Selection",
+                icon=":material/folder:"),
     ],
     "Generation": [
-        st.Page(generation, title="Image Generation"),
-        st.Page(colorization, title="Colorization"),
-        st.Page(imputation, title="Imputation")
+        st.Page(generation, title="Image Generation", icon=":material/image:"),
+        st.Page(colorization, title="Colorization", icon=":material/palette:"),
+        st.Page(imputation, title="Imputation", icon=":material/brush:"),
     ]
 }
 
@@ -380,8 +385,30 @@ def main():
     # Initialize session state
     if 'model' not in st.session_state:
         st.session_state.model = None
+    if 'model_dir' not in st.session_state:
+        st.session_state.model_dir = "saved_models"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
+
+    if st.session_state.model is None:
+        st.html("""
+            <style>
+            /* Disable all sidebar nav links */
+            [data-testid="stSidebarNavLink"] {
+                pointer-events: none;
+                cursor: default;
+                opacity: 0.5;
+                color: #999 !important;
+            }
+            /* Enable only the Model Selection link */
+            [data-testid="stSidebarNavLink"][href="http://localhost:8501/"] {
+                pointer-events: auto;
+                cursor: pointer;
+                opacity: 1;
+                color: inherit !important;
+            }
+            </style>
+        """)
 
     pg = st.navigation(pages, expanded=True)
     pg.run()
