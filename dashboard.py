@@ -312,9 +312,23 @@ def colorization():
     st.title("Image Colorization")
 
     if st.session_state.model is None:
-        st.warning(
-            "Please load a model first from Model Management")
+        st.warning("Please load a model first from Model Management")
         return
+
+    # Settings at the top
+    with st.expander("Colorization Settings", expanded=True, icon=":material/tune:"):
+        col1, col2 = st.columns(2)
+        with col1:
+            steps = st.slider("Sampling steps", 10, 1000, 500)
+            show_progress = st.checkbox("Show colorization progress", True)
+        with col2:
+            use_seed = st.checkbox("Use fixed seed", value=True)
+            if use_seed:
+                seed = st.number_input("Seed", value=42)
+            else:
+                seed = None
+                st.number_input("Seed", value=42, disabled=True,
+                                key="colorization_seed")
 
     uploaded_file = st.file_uploader(
         "Upload grayscale image", type=["jpg", "png"])
@@ -327,27 +341,70 @@ def colorization():
             st.image(image, caption="Original Grayscale",
                      use_container_width=True)
 
-        if st.button("Colorize Image"):
-            try:
-                # Convert to tensor and process
-                tensor = torch.tensor(np.array(image) / 255.0).unsqueeze(0)
-                colored = st.session_state.model.colorize(tensor)
-                colored_img = tensor_to_image(colored[0])
+            if st.button("Colorize Image", icon=":material/auto_awesome:"):
+                try:
+                    placeholder = col2.empty()
+                    progress_bar = None
 
-                with col2:
-                    st.image(colored_img, caption="Colorized",
-                             use_container_width=True)
-                    buf = io.BytesIO()
-                    colored_img.save(buf, format="PNG")
-                    st.download_button(
-                        "Download Colorized Image",
-                        buf.getvalue(),
-                        "colorized.png",
-                        "image/png"
+                    def update_progress(current_tensor, step):
+                        nonlocal progress_bar
+                        current_img = tensor_to_image(current_tensor[0])
+
+                        with placeholder.container():
+                            # Progress image display with overlay
+                            buf = io.BytesIO()
+                            current_img.save(buf, format="PNG")
+                            img_bytes = base64.b64encode(
+                                buf.getvalue()).decode("utf-8")
+
+                            html = f"""
+                            <div class="image-container">
+                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <div class="overlay">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+
+                            # Progress bar
+                            if not progress_bar:
+                                progress_bar = st.progress(0)
+                            progress_bar.progress((step + 1) / steps)
+
+                    # Convert to tensor and process
+                    tensor = torch.tensor(np.array(image) / 255.0).unsqueeze(0)
+                    colored = st.session_state.model.colorize(
+                        tensor,
+                        n_steps=steps,
+                        seed=seed if use_seed else None,
+                        progress_callback=update_progress if show_progress else None
                     )
+                    colored_img = tensor_to_image(colored[0])
 
-            except Exception as e:
-                st.error(f"Colorization failed: {str(e)}")
+                    # Final display
+                    with placeholder.container():
+                        st.image(colored_img, caption="Colorized Result",
+                                 use_container_width=True)
+
+                        # Download button
+                        buf = io.BytesIO()
+                        colored_img.save(buf, format="PNG")
+
+                        @st.fragment
+                        def create_download():
+                            st.download_button(
+                                "Download Colorized Image",
+                                buf.getvalue(),
+                                "colorized.png",
+                                "image/png",
+                                icon=":material/download:",
+                                key="colorized_dl"
+                            )
+                        create_download()
+
+                except Exception as e:
+                    st.error(f"Colorization failed: {str(e)}")
 
 
 def imputation():
@@ -357,13 +414,119 @@ def imputation():
         st.warning("Please load a model first from Model Management")
         return
 
-    uploaded_file = st.file_uploader(
-        "Upload image", type=["jpg", "png"])
+    # Settings at the top
+    with st.expander("Imputation Settings", expanded=True, icon=":material/tune:"):
+        col1, col2 = st.columns(2)
+        with col1:
+            steps = st.slider("Sampling steps", 10, 1000, 500)
+            show_progress = st.checkbox("Show imputation progress", True)
+        with col2:
+            use_seed = st.checkbox("Use fixed seed", value=True)
+            if use_seed:
+                seed = st.number_input("Seed", value=42)
+            else:
+                seed = None
+                st.number_input("Seed", value=42, disabled=True,
+                                key="imputation_seed")
+
+    uploaded_file = st.file_uploader("Upload image with transparent areas to inpaint",
+                                     type=["png", "webp"])
 
     if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Original Image",
-                 use_container_width=True)
+        image = Image.open(uploaded_file).convert("RGBA")  # Force RGBA mode
+        width, height = image.size
+
+        # Split into RGB and alpha channels
+        rgb_img = image.convert("RGB")
+        alpha_channel = np.array(image.split()[-1])
+
+        # Create mask from transparency (1 = masked/inpaint area)
+        mask = (alpha_channel == 0)
+
+        if not np.any(mask):
+            st.warning(
+                "No transparent areas detected - please upload an image with transparent regions to inpaint")
+            return
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.image(image, caption="Original Image with Transparency",
+                     use_container_width=True)
+
+            if st.button("Impute Image", icon=":material/auto_awesome:"):
+                try:
+                    device = st.session_state.model.device
+
+                    # Convert to tensors and move to model device
+                    img_tensor = torch.tensor(
+                        np.array(rgb_img)/255.0).permute(2, 0, 1).unsqueeze(0).float().to(device)
+                    mask_tensor = torch.from_numpy(mask).unsqueeze(
+                        0).unsqueeze(0).to(device)
+
+                    # Setup progress display
+                    placeholder = col2.empty()
+                    progress_bar = None
+
+                    def update_progress(current_tensor, step):
+                        nonlocal progress_bar
+                        current_img = tensor_to_image(current_tensor[0].cpu())
+
+                        with placeholder.container():
+                            # Progress image display with overlay
+                            buf = io.BytesIO()
+                            current_img.save(buf, format="PNG")
+                            img_bytes = base64.b64encode(
+                                buf.getvalue()).decode("utf-8")
+
+                            html = f"""
+                            <div class="image-container">
+                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <div class="overlay">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+
+                            if not progress_bar:
+                                progress_bar = st.progress(0)
+                            progress_bar.progress((step + 1) / steps)
+
+                    # Run imputation
+                    imputed = st.session_state.model.imputation(
+                        x=img_tensor,
+                        mask=mask_tensor,
+                        n_steps=steps,
+                        seed=seed if use_seed else None,
+                        progress_callback=update_progress if show_progress else None
+                    )
+
+                    # Convert result back to CPU for display
+                    imputed_img = tensor_to_image(imputed[0].cpu())
+
+                    # Final display
+                    with placeholder.container():
+                        st.image(imputed_img, caption="Imputed Result",
+                                 use_container_width=True)
+
+                        buf = io.BytesIO()
+                        imputed_img.save(buf, format="PNG")
+
+                        @st.fragment
+                        def create_download():
+                            st.download_button(
+                                "Download Imputed Image",
+                                buf.getvalue(),
+                                "imputed.png",
+                                "image/png",
+                                icon=":material/download:",
+                                key="imputed_dl"
+                            )
+                        create_download()
+
+                except Exception as e:
+                    st.error(f"Imputation failed: {str(e)}")
 
 
 pages = {

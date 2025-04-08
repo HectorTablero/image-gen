@@ -160,9 +160,13 @@ class GenerativeModel:
     def generate(self,
                  num_samples: int,
                  n_steps: int = 500,
-                 seed: int = 0,
+                 seed: Optional[int] = None,
                  selected_class: Optional[int] = None,
-                 progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> torch.Tensor:
+                 progress_callback: Optional[Callable[[
+                     Tensor, int], None]] = None,
+                 guidance: Optional[Callable[[
+                     Tensor, Tensor, Tensor], Tensor]] = None
+                 ) -> torch.Tensor:
         if not hasattr(self, 'model') or self.model is None:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
@@ -179,6 +183,67 @@ class GenerativeModel:
                 score_model=self.model,
                 n_steps=n_steps,
                 seed=seed,
+                callback=progress_callback,
+                guidance=guidance
+            )
+
+        self.model.train()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return samples
+
+    def colorize(self, x: Tensor, n_steps: int = 500,
+                 seed: Optional[int] = None,
+                 progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
+        """Colorize grayscale images using YUV-space luminance enforcement"""
+        if not hasattr(self, 'num_c') or self.num_c != 3:
+            raise ValueError("Colorization requires a 3-channel model")
+
+        if x.dim() == 3:
+            x = x.unsqueeze(0)  # Add batch dimension
+        if x.shape[1] == 3:
+            y_target = self._rgb_to_grayscale(x)
+        elif x.shape[1] == 1:
+            y_target = x
+        else:
+            raise ValueError("Input must be 1 or 3 channels")
+
+        y_target = (y_target - y_target.min()) / \
+            (y_target.max() - y_target.min() + 1e-8)
+
+        device = next(self.model.parameters()).device
+        y_target = y_target.to(device).float()
+        batch_size, _, h, w = y_target.shape
+
+        with torch.no_grad():
+            uv = torch.rand(batch_size, 2, h, w, device=device) * \
+                0.5 - 0.25
+            yuv = torch.cat([y_target, uv], dim=1)
+            x_init = self._yuv_to_rgb(yuv)
+
+            t_T = torch.ones(batch_size, device=device)
+            x_T, _ = self.diffusion.forward_process(x_init, t_T)
+
+        def enforce_luminance(x_t: Tensor, t: Tensor) -> Tensor:
+            """Enforce Y channel while preserving UV color information"""
+            with torch.no_grad():
+                yuv = self._rgb_to_yuv(x_t)
+
+                yuv[:, 0:1] = y_target
+
+                enforced_rgb = self._yuv_to_rgb(yuv)
+
+                alpha = t.item() / self.diffusion.schedule.max_t
+                return enforced_rgb * (1 - alpha) + x_t * alpha
+
+        self.model.eval()
+        with torch.no_grad():
+            samples = self.sampler(
+                x_T=x_T,
+                score_model=self.model,
+                n_steps=n_steps,
+                guidance=enforce_luminance,
                 callback=progress_callback
             )
 
@@ -188,62 +253,81 @@ class GenerativeModel:
 
         return samples
 
-    def colorize(self, x: Tensor) -> Tensor:
-        # Check model compatibility
-        if not hasattr(self, 'num_c') or self.num_c != 3:
-            raise ValueError("Colorization requires a 3-channel model")
-
-        # Convert input to grayscale (Y channel)
-        if x.shape[1] == 3:
-            y_target = self._rgb_to_grayscale(x)
-        elif x.shape[1] == 1:
-            y_target = x
-        else:
-            raise ValueError("Input must be 1 or 3 channels")
-
-        # Move to device
-        y_target = y_target.to(self.device)
-
-        # Define guidance function
-        lambda_param = 200  # Tune this empirically
-
-        def luminance_guidance(x_t: Tensor, t: Tensor, score: Tensor):
-            batch_size = x_t.shape[0]
-
-            # Estimate denoised image (x₀) from current x_t
-            with torch.no_grad():
-                sigma_t = self.diffusion.schedule(t).view(
-                    batch_size, *([1]*(x_t.dim()-1)))
-                x0_estimate = x_t + sigma_t**2 * score  # VE-specific
-
-            # Compute luminance loss gradient
-            x0_estimate.requires_grad_(True)
-            y_pred = self._rgb_to_grayscale(x0_estimate)
-            loss = torch.mean((y_pred - y_target)**2, dim=[1, 2, 3])
-
-            # Adjust score with gradient
-            grad = torch.autograd.grad(
-                outputs=torch.sum(loss),
-                inputs=x0_estimate,
-                retain_graph=True
-            )[0]
-
-            return score + lambda_param * grad
-
-        # Generate with guidance
-        return self.generate(
-            num_samples=x.shape[0],
-            sampler_kwargs={'guidance': luminance_guidance}  # Pass to sampler
-        )
+    @staticmethod
+    def _rgb_to_yuv(img: Tensor) -> Tensor:
+        """Convert RGB tensor (B,3,H,W) to YUV (B,3,H,W)"""
+        r, g, b = img.chunk(3, dim=1)
+        y = 0.299 * r + 0.587 * g + 0.114 * b
+        u = 0.492 * (b - y) + 0.5
+        v = 0.877 * (r - y) + 0.5
+        return torch.cat([y, u, v], dim=1)
 
     @staticmethod
-    def _rgb_to_grayscale(img: Tensor) -> Tensor:
-        """Convert RGB tensor (B,3,H,W) to grayscale (B,1,H,W)"""
-        return 0.299 * img[:, 0] + 0.587 * img[:, 1] + 0.114 * img[:, 2]
+    def _yuv_to_rgb(yuv: Tensor) -> Tensor:
+        """Convert YUV tensor (B,3,H,W) to RGB (B,3,H,W)"""
+        y, u, v = yuv.chunk(3, dim=1)
+        u = (u - 0.5) / 0.492
+        v = (v - 0.5) / 0.877
 
-    def imputation(self, x: Tensor, mask: Tensor) -> Tensor:
-        # TODO: Implement imputation logic
-        pass
+        r = y + v
+        b = y + u
+        g = (y - 0.299 * r - 0.114 * b) / 0.587
+        return torch.clamp(torch.cat([r, g, b], dim=1), 0.0, 1.0)
+
+    def imputation(self, x: Tensor, mask: Tensor, n_steps: int = 500,
+                   seed: Optional[int] = None,
+                   progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
+        """Image inpainting with mask-guided generation and proper normalization"""
+        if x.shape[-2:] != mask.shape[-2:]:
+            raise ValueError(
+                "Image and mask must have same spatial dimensions")
+        if mask.shape[1] != 1:
+            raise ValueError("Mask must be single-channel")
+
+        device = next(self.model.parameters()).device
+        batch_size, channels, height, width = x.shape
+
+        input_min = x.min()
+        input_max = x.max()
+
+        x_normalized = (x - input_min) / (input_max - input_min + 1e-8) * 2 - 1
+
+        generate_mask = mask.to(device).bool()
+        generate_mask = generate_mask.expand(-1, channels, -1, -1)
+        preserve_mask = ~generate_mask
+
+        with torch.no_grad():
+            x_init = x_normalized.clone().to(device)
+            noise = torch.randn_like(x_normalized)
+            x_T = torch.where(generate_mask, noise, x_init)
+            t_T = torch.ones(batch_size, device=device)
+            x_T, _ = self.diffusion.forward_process(x_T, t_T)
+
+        def inpaint_guidance(x_t: Tensor, t: Tensor) -> Tensor:
+            with torch.no_grad():
+                return torch.where(preserve_mask, x_normalized, x_t)
+
+        self.model.eval()
+        with torch.no_grad():
+            samples_normalized = self.sampler(
+                x_T=x_T,
+                score_model=self.model,
+                n_steps=n_steps,
+                guidance=inpaint_guidance,
+                callback=progress_callback,
+                seed=seed
+            )
+
+        combined_normalized = torch.where(
+            generate_mask, samples_normalized, x_normalized)
+        result = (combined_normalized + 1) / 2 * \
+            (input_max - input_min) + input_min
+
+        self.model.train()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return result
 
     def save(self, path: str):
         save_data = {
