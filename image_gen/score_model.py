@@ -12,12 +12,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+from torch import Tensor
+from typing import Callable, Optional, List
 
 
 class GaussianRandomFourierFeatures(nn.Module):
     """Gaussian random Fourier features for encoding time steps."""
 
-    def __init__(self, embed_dim, scale=30.):
+    def __init__(self, embed_dim: int, scale: float = 30.0):
         super().__init__()
         # Randomly sample weights during initialization. These weights are fixed
         # during optimization and are not trainable.
@@ -26,7 +28,7 @@ class GaussianRandomFourierFeatures(nn.Module):
             requires_grad=False,
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x_proj = x[:, None] * self.rff_weights[None, :] * 2 * np.pi
         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
 
@@ -34,18 +36,18 @@ class GaussianRandomFourierFeatures(nn.Module):
 class Dense(nn.Module):
     """A fully connected layer that reshapes outputs to feature maps."""
 
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim: int, output_dim: int):
         super().__init__()
         self.dense = nn.Linear(input_dim, output_dim)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return self.dense(x)[..., None, None]
 
 
 class ScoreNet(nn.Module):
     """A time-dependent score-based model built upon U-Net architecture."""
 
-    def __init__(self, marginal_prob_std, channels=[32, 64, 128, 256], embed_dim=256, num_c=3):
+    def __init__(self, marginal_prob_std: Callable[[Tensor], float], channels: List[int] = [32, 64, 128, 256], embed_dim: int = 256, num_c: int = 3, num_classes: Optional[int] = None, class_dropout_prob: float = 0.25):
         """Initialize a time-dependent score-based network.
 
         Args:
@@ -57,13 +59,18 @@ class ScoreNet(nn.Module):
         """
         super().__init__()
 
-        self.num_c = num_c
+        self.num_channels = num_c
+        self.num_classes = num_classes
+        self.class_dropout_prob = class_dropout_prob
 
         # Gaussian random Fourier feature embedding layer for time
         self.embed = nn.Sequential(
             GaussianRandomFourierFeatures(embed_dim=embed_dim),
             nn.Linear(embed_dim, embed_dim)
         )
+
+        if num_classes is not None:
+            self.class_embed = nn.Embedding(num_classes, embed_dim)
 
         # Encoding path
         self.conv1 = nn.Conv2d(
@@ -109,9 +116,17 @@ class ScoreNet(nn.Module):
         self.act = lambda x: x * torch.sigmoid(x)
         self.marginal_prob_std = marginal_prob_std
 
-    def forward(self, x, t):
+    def forward(self, x: Tensor, t: Tensor, class_label: Optional[int] = None):
         # Obtain the Gaussian random Fourier feature embedding for t
-        embed = self.act(self.embed(t))
+        t_embed = self.act(self.embed(t))
+
+        # Class conditioning
+        embed = t_embed
+        if self.num_classes is not None and class_label is not None:
+            class_embed = self.class_embed(class_label)
+            embed = t_embed + class_embed
+            if self.training and torch.rand(1) < self.class_dropout_prob:
+                embed = t_embed
 
         # Encoding path
         h1 = self.conv1(x)

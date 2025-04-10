@@ -12,6 +12,9 @@ import sys
 sys.path.append('./..')
 
 
+NONE_LABEL = "(unset)"
+
+
 def tensor_to_image(tensor):
     tensor = tensor.detach().cpu()
 
@@ -156,6 +159,10 @@ def model_selection():
                     type(
                         st.session_state.model.diffusion.schedule).__name__: st.session_state.model.diffusion.schedule.config()
                 }
+            if st.session_state.model._label_map is not None:
+                info["Labels"] = ", ".join([str(i) for i in
+                                            st.session_state.model._label_map.keys()])
+            info["Model Version"] = st.session_state.model.version
             st.json(info)
         else:
             st.warning("No model loaded")
@@ -171,22 +178,48 @@ def generation():
             "Please load a model first from Model Management")
         return
 
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
     with st.expander("Generation Settings", expanded=True, icon=":material/tune:"):
         col1, col2 = st.columns(2)
 
         with col1:
-            num_images = st.slider("Number of images", 1, 16, 4)
-            use_seed = st.checkbox("Use fixed seed", value=True)
+            num_images = st.slider("Number of images", 1, 16,
+                                   st.session_state.settings["num_images"])
+            st.session_state.settings["num_images"] = num_images
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
             if use_seed:
-                seed = st.number_input("Seed", value=42)
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", value=42, disabled=True,
-                                key="disabled_seed")
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
+                                key="generation_seed")
 
         with col2:
-            steps = st.slider("Sampling steps", 10, 1000, 500)
-            show_progress = st.checkbox("Show generation progress", True)
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+            else:
+                class_id = None
+            st.session_state.settings["class_id"] = selected_class
 
     # brush / graient / auto_awesome
     if st.button("Generate Images", icon=":material/auto_awesome:"):
@@ -265,6 +298,7 @@ def generation():
                 num_images,
                 n_steps=steps,
                 seed=seed if use_seed else None,
+                class_labels=class_id,
                 progress_callback=update_progress if show_progress else None
             )
 
@@ -312,9 +346,51 @@ def colorization():
     st.title("Image Colorization")
 
     if st.session_state.model is None:
-        st.warning(
-            "Please load a model first from Model Management")
+        st.warning("Please load a model first from Model Management")
         return
+
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
+    # Settings at the top
+    with st.expander("Colorization Settings", expanded=True, icon=":material/tune:"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("<div style='height: 100%;'></div>",
+                        unsafe_allow_html=True)
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
+            if use_seed:
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
+            else:
+                seed = None
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
+                                key="colorization_seed")
+
+        with col2:
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                st.session_state.settings["class_id"] = selected_class
+            else:
+                class_id = None
 
     uploaded_file = st.file_uploader(
         "Upload grayscale image", type=["jpg", "png"])
@@ -327,27 +403,71 @@ def colorization():
             st.image(image, caption="Original Grayscale",
                      use_container_width=True)
 
-        if st.button("Colorize Image"):
-            try:
-                # Convert to tensor and process
-                tensor = torch.tensor(np.array(image) / 255.0).unsqueeze(0)
-                colored = st.session_state.model.colorize(tensor)
-                colored_img = tensor_to_image(colored[0])
+            if st.button("Colorize Image", icon=":material/auto_awesome:"):
+                try:
+                    placeholder = col2.empty()
+                    progress_bar = None
 
-                with col2:
-                    st.image(colored_img, caption="Colorized",
-                             use_container_width=True)
-                    buf = io.BytesIO()
-                    colored_img.save(buf, format="PNG")
-                    st.download_button(
-                        "Download Colorized Image",
-                        buf.getvalue(),
-                        "colorized.png",
-                        "image/png"
+                    def update_progress(current_tensor, step):
+                        nonlocal progress_bar
+                        current_img = tensor_to_image(current_tensor[0])
+
+                        with placeholder.container():
+                            # Progress image display with overlay
+                            buf = io.BytesIO()
+                            current_img.save(buf, format="PNG")
+                            img_bytes = base64.b64encode(
+                                buf.getvalue()).decode("utf-8")
+
+                            html = f"""
+                            <div class="image-container">
+                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <div class="overlay">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+
+                            # Progress bar
+                            if not progress_bar:
+                                progress_bar = st.progress(0)
+                            progress_bar.progress((step + 1) / steps)
+
+                    # Convert to tensor and process
+                    tensor = torch.tensor(np.array(image) / 255.0).unsqueeze(0)
+                    colored = st.session_state.model.colorize(
+                        tensor,
+                        n_steps=steps,
+                        seed=seed if use_seed else None,
+                        class_labels=class_id,
+                        progress_callback=update_progress if show_progress else None
                     )
+                    colored_img = tensor_to_image(colored[0])
 
-            except Exception as e:
-                st.error(f"Colorization failed: {str(e)}")
+                    # Final display
+                    with placeholder.container():
+                        st.image(colored_img, caption="Colorized Result",
+                                 use_container_width=True)
+
+                        # Download button
+                        buf = io.BytesIO()
+                        colored_img.save(buf, format="PNG")
+
+                        @st.fragment
+                        def create_download():
+                            st.download_button(
+                                "Download Colorized Image",
+                                buf.getvalue(),
+                                "colorized.png",
+                                "image/png",
+                                icon=":material/download:",
+                                key="colorized_dl"
+                            )
+                        create_download()
+
+                except Exception as e:
+                    st.error(f"Colorization failed: {str(e)}")
 
 
 def imputation():
@@ -357,13 +477,158 @@ def imputation():
         st.warning("Please load a model first from Model Management")
         return
 
-    uploaded_file = st.file_uploader(
-        "Upload image", type=["jpg", "png"])
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
+    # Settings at the top
+    with st.expander("Imputation Settings", expanded=True, icon=":material/tune:"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
+            if use_seed:
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
+            else:
+                seed = None
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
+                                key="imputation_seed")
+
+        with col2:
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                st.session_state.settings["class_label"] = selected_class
+            else:
+                class_id = None
+
+    uploaded_file = st.file_uploader("Upload image with transparent areas to inpaint",
+                                     type=["png", "webp"])
 
     if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Original Image",
-                 use_container_width=True)
+        image = Image.open(uploaded_file).convert("RGBA")  # Force RGBA mode
+        width, height = image.size
+
+        # Split into RGB and alpha channels
+        rgb_img = image.convert("RGB")
+        alpha_channel = np.array(image.split()[-1])
+
+        # Create mask from transparency (1 = masked/inpaint area)
+        mask = (alpha_channel == 0)
+
+        if not np.any(mask):
+            st.warning(
+                "No transparent areas detected - please upload an image with transparent regions to inpaint")
+            return
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+            st.markdown(f"""
+                <div class="image-mask-container">
+                    <div class="checkerboard-bg">
+                        <img class="imputation-image" style="image-rendering: pixelated;" src="data:image/png;base64,{img_b64}" />
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption(
+                "<p style='text-align: center;'>Original Image with Transparency</p>", unsafe_allow_html=True)
+
+            if st.button("Impute Image", icon=":material/auto_awesome:"):
+                try:
+                    device = st.session_state.model.device
+
+                    # Convert to tensors and move to model device
+                    img_tensor = torch.tensor(
+                        np.array(rgb_img)/255.0).permute(2, 0, 1).unsqueeze(0).float().to(device)
+                    mask_tensor = torch.from_numpy(mask).unsqueeze(
+                        0).unsqueeze(0).to(device)
+
+                    # Setup progress display
+                    placeholder = col2.empty()
+                    progress_bar = None
+
+                    def update_progress(current_tensor, step):
+                        nonlocal progress_bar
+                        current_img = tensor_to_image(current_tensor[0].cpu())
+
+                        with placeholder.container():
+                            # Progress image display with overlay
+                            buf = io.BytesIO()
+                            current_img.save(buf, format="PNG")
+                            img_bytes = base64.b64encode(
+                                buf.getvalue()).decode("utf-8")
+
+                            html = f"""
+                            <div class="image-container">
+                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <div class="overlay">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(html, unsafe_allow_html=True)
+
+                            if not progress_bar:
+                                progress_bar = st.progress(0)
+                            progress_bar.progress((step + 1) / steps)
+
+                    # Run imputation
+                    imputed = st.session_state.model.imputation(
+                        x=img_tensor,
+                        mask=mask_tensor,
+                        n_steps=steps,
+                        seed=seed if use_seed else None,
+                        class_labels=class_id,
+                        progress_callback=update_progress if show_progress else None
+                    )
+
+                    # Convert result back to CPU for display
+                    imputed_img = tensor_to_image(imputed[0].cpu())
+
+                    # Final display
+                    with placeholder.container():
+                        st.image(imputed_img, caption="Imputed Result",
+                                 use_container_width=True)
+
+                        buf = io.BytesIO()
+                        imputed_img.save(buf, format="PNG")
+
+                        @st.fragment
+                        def create_download():
+                            st.download_button(
+                                "Download Imputed Image",
+                                buf.getvalue(),
+                                "imputed.png",
+                                "image/png",
+                                icon=":material/download:",
+                                key="imputed_dl"
+                            )
+                        create_download()
+
+                except Exception as e:
+                    st.error(f"Imputation failed: {str(e)}")
 
 
 pages = {
@@ -397,6 +662,15 @@ def main():
         st.session_state.model_dir = "saved_models"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
+    if 'settings' not in st.session_state:
+        st.session_state.settings = {
+            "num_images": 4,
+            "show_progress": True,
+            "use_seed": True,
+            "seed": 42,
+            "steps": 500,
+            "class_label": NONE_LABEL
+        }
 
     if st.session_state.model is None:
         st.html(f"""

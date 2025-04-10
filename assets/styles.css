@@ -59,3 +59,32 @@
 [data-testid="stImageContainer"] img:hover {
     image-rendering: pixelated;
 }
+
+.image-mask-container {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 4px;
+}
+
+.checkerboard-bg {
+    --checker-color: rgba(120, 120, 120, 0.15);
+    --checker-size: 16px;
+
+    position: relative;
+    background-image: linear-gradient(45deg, var(--checker-color) 25%, transparent 25%), linear-gradient(-45deg, var(--checker-color) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--checker-color) 75%), linear-gradient(-45deg, transparent 75%, var(--checker-color) 75%);
+    background-size: calc(var(--checker-size) * 2) calc(var(--checker-size) * 2);
+    background-position: 0 0, 0 var(--checker-size), var(--checker-size) calc(-1 * var(--checker-size)), calc(-1 * var(--checker-size)) 0;
+}
+
+.imputation-image {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.imputation-image:hover {
+    image-rendering: pixelated;
+}
