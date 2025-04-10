@@ -189,8 +189,57 @@ class GenerativeModel:
         return samples
 
     def colorize(self, x: Tensor) -> Tensor:
-        # TODO: Implement colorization logic
-        pass
+        # Check model compatibility
+        if not hasattr(self, 'num_c') or self.num_c != 3:
+            raise ValueError("Colorization requires a 3-channel model")
+
+        # Convert input to grayscale (Y channel)
+        if x.shape[1] == 3:
+            y_target = self._rgb_to_grayscale(x)
+        elif x.shape[1] == 1:
+            y_target = x
+        else:
+            raise ValueError("Input must be 1 or 3 channels")
+
+        # Move to device
+        y_target = y_target.to(self.device)
+
+        # Define guidance function
+        lambda_param = 200  # Tune this empirically
+
+        def luminance_guidance(x_t: Tensor, t: Tensor, score: Tensor):
+            batch_size = x_t.shape[0]
+
+            # Estimate denoised image (x₀) from current x_t
+            with torch.no_grad():
+                sigma_t = self.diffusion.schedule(t).view(
+                    batch_size, *([1]*(x_t.dim()-1)))
+                x0_estimate = x_t + sigma_t**2 * score  # VE-specific
+
+            # Compute luminance loss gradient
+            x0_estimate.requires_grad_(True)
+            y_pred = self._rgb_to_grayscale(x0_estimate)
+            loss = torch.mean((y_pred - y_target)**2, dim=[1, 2, 3])
+
+            # Adjust score with gradient
+            grad = torch.autograd.grad(
+                outputs=torch.sum(loss),
+                inputs=x0_estimate,
+                retain_graph=True
+            )[0]
+
+            return score + lambda_param * grad
+
+        # Generate with guidance
+        return self.generate(
+            num_samples=x.shape[0],
+            sampler_kwargs={'guidance': luminance_guidance}  # Pass to sampler
+        )
+
+    @staticmethod
+    def _rgb_to_grayscale(img: Tensor) -> Tensor:
+        """Convert RGB tensor (B,3,H,W) to grayscale (B,1,H,W)"""
+        return 0.299 * img[:, 0] + 0.587 * img[:, 1] + 0.114 * img[:, 2]
 
     def imputation(self, x: Tensor, mask: Tensor) -> Tensor:
         # TODO: Implement imputation logic
@@ -202,6 +251,7 @@ class GenerativeModel:
             'shape': self.shape,
             'diffusion_type': self.diffusion.__class__.__name__.lower(),
             'sampler_type': self.sampler.__class__.__name__.lower(),
+            'num_channels': self.num_c,
         }
 
         if hasattr(self.diffusion, 'config'):
@@ -265,7 +315,7 @@ class GenerativeModel:
         self._rebuild_sampler(checkpoint)
 
         checkpoint_channels = checkpoint.get(
-            'num_channels', 1)  # Default to 1 if not specified
+            'num_channels', 1)  # Default to grayscale
         self.shape = checkpoint.get('shape', (32, 32))
 
         # Check if we need to rebuild the model with the correct number of channels

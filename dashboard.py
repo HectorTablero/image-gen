@@ -13,24 +13,22 @@ sys.path.append('./..')
 
 
 def tensor_to_image(tensor):
-    """Convert a tensor to PIL Image"""
     tensor = tensor.detach().cpu()
 
-    # Handle different channel dimensions
     if tensor.dim() == 4:
-        tensor = tensor[0]  # Take first sample
+        tensor = tensor[0]
 
-    # Normalize to [0, 1] if not already
     if tensor.min() < 0 or tensor.max() > 1:
         tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())
 
-    tensor = tensor.permute(1, 2, 0).numpy()
-    tensor = (tensor * 255).astype(np.uint8)
-
-    # Convert to PIL Image
-    if tensor.shape[-1] == 1:  # Grayscale
-        return Image.fromarray(tensor[..., 0], mode='L')
-    return Image.fromarray(tensor)
+    if tensor.shape[0] == 1:  # Grayscale
+        tensor = tensor.squeeze(0)
+        array = (tensor.numpy() * 255).astype(np.uint8)
+        return Image.fromarray(array, mode='L')
+    else:  # RGB
+        tensor = tensor.permute(1, 2, 0)  # CHW -> HWC
+        array = (tensor.numpy() * 255).astype(np.uint8)
+        return Image.fromarray(array)
 
 
 @st.cache_data
@@ -88,6 +86,8 @@ def model_selection():
                         model = GenerativeModel(verbose=False)
                         model.load(save_path)
                         st.session_state.model = model
+                        st.session_state.model_name = ".".join(
+                            uploaded_file.name.split(".")[:-1])
                         st.session_state.current_model = uploaded_file.name
 
                     st.success(f"Model saved and loaded from {save_path}")
@@ -109,7 +109,7 @@ def model_selection():
         if model_dir != st.session_state.model_dir:
             st.session_state.model_dir = model_dir
 
-        if st.button("Refresh Model List"):
+        if st.button("Refresh Model List", icon=":material/sync:"):
             pass  # Triggers rerun
 
         try:
@@ -117,12 +117,14 @@ def model_selection():
                 model_dir) if f.endswith(".pt") or f.endswith(".pth")]
             selected_model = st.selectbox("Available models", models)
 
-            if st.button("Load Selected Model"):
+            if st.button("Load Selected Model", icon=":material/check:"):
                 model_path = os.path.join(model_dir, selected_model)
                 try:
                     model = GenerativeModel(verbose=False)
                     model.load(model_path)
                     st.session_state.model = model
+                    st.session_state.model_name = ".".join(
+                        selected_model.split(".")[:-1])
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error loading model: {str(e)}")
@@ -140,6 +142,7 @@ def model_selection():
         st.header("Model Information")
         if st.session_state.model is not None:
             info = {
+                "Model Name": st.session_state.model_name,
                 "Number of Channels": st.session_state.model.num_c,
                 "Input Shape": st.session_state.model.shape,
                 "Sampler Type": type(st.session_state.model.sampler).__name__,
@@ -168,7 +171,7 @@ def generation():
             "Please load a model first from Model Management")
         return
 
-    with st.expander("Generation Settings", expanded=True):
+    with st.expander("Generation Settings", expanded=True, icon=":material/tune:"):
         col1, col2 = st.columns(2)
 
         with col1:
@@ -185,7 +188,8 @@ def generation():
             steps = st.slider("Sampling steps", 10, 1000, 500)
             show_progress = st.checkbox("Show generation progress", True)
 
-    if st.button("Generate Images"):
+    # brush / graient / auto_awesome
+    if st.button("Generate Images", icon=":material/auto_awesome:"):
         try:
             placeholder = st.empty()
             progress_bars_created = False
@@ -223,7 +227,6 @@ def generation():
                 with placeholder.container():
                     row_start = 0
                     for cols_in_row in distribution:
-                        # Create columns for current row
                         cols = st.columns(cols_in_row)
                         images_in_row = current_images[row_start:row_start+cols_in_row]
 
@@ -246,11 +249,11 @@ def generation():
                                 st.markdown(html, unsafe_allow_html=True)
 
                                 # Progress bars
+                                pb_key = f"pb_{row_start+idx}"
                                 if not progress_bars_created:
-                                    st.session_state[f"pb_{row_start+idx}"] = st.progress(
-                                        0)
+                                    st.session_state[pb_key] = st.progress(0)
                                 else:
-                                    st.session_state[f"pb_{row_start+idx}"].progress(
+                                    st.session_state[pb_key].progress(
                                         (step + 1) / steps)
 
                         row_start += cols_in_row
@@ -272,26 +275,29 @@ def generation():
             with placeholder.container():
                 row_start = 0
                 for cols_in_row in distribution:
-                    # Create columns for current row
                     cols = st.columns(cols_in_row)
                     images_in_row = images[row_start:row_start+cols_in_row]
 
                     for idx, (img, col) in enumerate(zip(images_in_row, cols)):
                         with col:
-                            # Final image display
                             st.image(img, use_container_width=True)
+
+                            @st.fragment
+                            def download_image(buf, n):
+                                st.download_button(
+                                    f"Download Image {n}",
+                                    buf.getvalue(),
+                                    f"generated_{n}.png",
+                                    "image/png",
+                                    icon=":material/download:",
+                                    key=f"dl_{n}",
+                                    on_click=lambda: None
+                                )
 
                             # Download button
                             buf = io.BytesIO()
                             img.save(buf, format="PNG", compress_level=0)
-                            st.download_button(
-                                f"Download Image {row_start+idx+1}",
-                                buf.getvalue(),
-                                f"generated_{row_start+idx+1}.png",
-                                "image/png",
-                                key=f"dl_{row_start+idx}",
-                                on_click=lambda: None
-                            )
+                            download_image(buf, row_start+idx+1)
 
                     row_start += cols_in_row
 
@@ -368,7 +374,7 @@ pages = {
     "Generation": [
         st.Page(generation, title="Image Generation", icon=":material/image:"),
         st.Page(colorization, title="Colorization", icon=":material/palette:"),
-        st.Page(imputation, title="Imputation", icon=":material/brush:"),
+        st.Page(imputation, title="Imputation", icon=":material/draw:"),
     ]
 }
 
@@ -385,28 +391,28 @@ def main():
     # Initialize session state
     if 'model' not in st.session_state:
         st.session_state.model = None
+    if 'model_name' not in st.session_state:
+        st.session_state.model_name = None
     if 'model_dir' not in st.session_state:
         st.session_state.model_dir = "saved_models"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
 
     if st.session_state.model is None:
-        st.html("""
+        st.html(f"""
             <style>
-            /* Disable all sidebar nav links */
-            [data-testid="stSidebarNavLink"] {
+            [data-testid="stSidebarNavLink"] {{
                 pointer-events: none;
                 cursor: default;
                 opacity: 0.5;
                 color: #999 !important;
-            }
-            /* Enable only the Model Selection link */
-            [data-testid="stSidebarNavLink"][href="http://localhost:8501/"] {
+            }}
+            [data-testid="stNavSectionHeader"]:first-child + li a[data-testid="stSidebarNavLink"] {{
                 pointer-events: auto;
                 cursor: pointer;
                 opacity: 1;
                 color: inherit !important;
-            }
+            }}
             </style>
         """)
 
