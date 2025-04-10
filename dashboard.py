@@ -12,6 +12,9 @@ import sys
 sys.path.append('./..')
 
 
+NONE_LABEL = "(unset)"
+
+
 def tensor_to_image(tensor):
     tensor = tensor.detach().cpu()
 
@@ -156,6 +159,10 @@ def model_selection():
                     type(
                         st.session_state.model.diffusion.schedule).__name__: st.session_state.model.diffusion.schedule.config()
                 }
+            if st.session_state.model._label_map is not None:
+                info["Labels"] = ", ".join([str(i) for i in
+                                            st.session_state.model._label_map.keys()])
+            info["Model Version"] = st.session_state.model.version
             st.json(info)
         else:
             st.warning("No model loaded")
@@ -171,22 +178,48 @@ def generation():
             "Please load a model first from Model Management")
         return
 
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
     with st.expander("Generation Settings", expanded=True, icon=":material/tune:"):
         col1, col2 = st.columns(2)
 
         with col1:
-            num_images = st.slider("Number of images", 1, 16, 4)
-            use_seed = st.checkbox("Use fixed seed", value=True)
+            num_images = st.slider("Number of images", 1, 16,
+                                   st.session_state.settings["num_images"])
+            st.session_state.settings["num_images"] = num_images
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
             if use_seed:
-                seed = st.number_input("Seed", value=42)
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", value=42, disabled=True,
-                                key="disabled_seed")
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
+                                key="generation_seed")
 
         with col2:
-            steps = st.slider("Sampling steps", 10, 1000, 500)
-            show_progress = st.checkbox("Show generation progress", True)
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+            else:
+                class_id = None
+            st.session_state.settings["class_id"] = selected_class
 
     # brush / graient / auto_awesome
     if st.button("Generate Images", icon=":material/auto_awesome:"):
@@ -265,6 +298,7 @@ def generation():
                 num_images,
                 n_steps=steps,
                 seed=seed if use_seed else None,
+                class_labels=class_id,
                 progress_callback=update_progress if show_progress else None
             )
 
@@ -315,20 +349,48 @@ def colorization():
         st.warning("Please load a model first from Model Management")
         return
 
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
     # Settings at the top
     with st.expander("Colorization Settings", expanded=True, icon=":material/tune:"):
         col1, col2 = st.columns(2)
+
         with col1:
-            steps = st.slider("Sampling steps", 10, 1000, 500)
-            show_progress = st.checkbox("Show colorization progress", True)
-        with col2:
-            use_seed = st.checkbox("Use fixed seed", value=True)
+            st.markdown("<div style='height: 100%;'></div>",
+                        unsafe_allow_html=True)
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
             if use_seed:
-                seed = st.number_input("Seed", value=42)
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", value=42, disabled=True,
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
                                 key="colorization_seed")
+
+        with col2:
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                st.session_state.settings["class_id"] = selected_class
+            else:
+                class_id = None
 
     uploaded_file = st.file_uploader(
         "Upload grayscale image", type=["jpg", "png"])
@@ -378,6 +440,7 @@ def colorization():
                         tensor,
                         n_steps=steps,
                         seed=seed if use_seed else None,
+                        class_labels=class_id,
                         progress_callback=update_progress if show_progress else None
                     )
                     colored_img = tensor_to_image(colored[0])
@@ -414,20 +477,46 @@ def imputation():
         st.warning("Please load a model first from Model Management")
         return
 
+    # Get label map from model data
+    label_map = st.session_state.model._label_map
+
     # Settings at the top
     with st.expander("Imputation Settings", expanded=True, icon=":material/tune:"):
         col1, col2 = st.columns(2)
+
         with col1:
-            steps = st.slider("Sampling steps", 10, 1000, 500)
-            show_progress = st.checkbox("Show imputation progress", True)
-        with col2:
-            use_seed = st.checkbox("Use fixed seed", value=True)
+            use_seed = st.checkbox(
+                "Use fixed seed", st.session_state.settings["use_seed"])
+            st.session_state.settings["use_seed"] = use_seed
             if use_seed:
-                seed = st.number_input("Seed", value=42)
+                seed = st.number_input(
+                    "Seed", st.session_state.settings["seed"])
+                st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", value=42, disabled=True,
+                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
                                 key="imputation_seed")
+
+        with col2:
+            steps = st.slider("Sampling steps", 10, 1000,
+                              st.session_state.settings["steps"])
+            st.session_state.settings["steps"] = steps
+            show_progress = st.checkbox(
+                "Show generation progress", st.session_state.settings["show_progress"])
+            st.session_state.settings["show_progress"] = show_progress
+
+            # Class selection only if label map exists
+            if label_map is not None:
+                selected_class = st.selectbox(
+                    "Class conditioning",
+                    options=[NONE_LABEL] + sorted(label_map.keys()),
+                    index=list(label_map.keys()).index(
+                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                )
+                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                st.session_state.settings["class_label"] = selected_class
+            else:
+                class_id = None
 
     uploaded_file = st.file_uploader("Upload image with transparent areas to inpaint",
                                      type=["png", "webp"])
@@ -451,8 +540,20 @@ def imputation():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.image(image, caption="Original Image with Transparency",
-                     use_container_width=True)
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+            st.markdown(f"""
+                <div class="image-mask-container">
+                    <div class="checkerboard-bg">
+                        <img class="imputation-image" style="image-rendering: pixelated;" src="data:image/png;base64,{img_b64}" />
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.caption(
+                "<p style='text-align: center;'>Original Image with Transparency</p>", unsafe_allow_html=True)
 
             if st.button("Impute Image", icon=":material/auto_awesome:"):
                 try:
@@ -499,6 +600,7 @@ def imputation():
                         mask=mask_tensor,
                         n_steps=steps,
                         seed=seed if use_seed else None,
+                        class_labels=class_id,
                         progress_callback=update_progress if show_progress else None
                     )
 
@@ -560,6 +662,15 @@ def main():
         st.session_state.model_dir = "saved_models"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
+    if 'settings' not in st.session_state:
+        st.session_state.settings = {
+            "num_images": 4,
+            "show_progress": True,
+            "use_seed": True,
+            "seed": 42,
+            "steps": 500,
+            "class_label": NONE_LABEL
+        }
 
     if st.session_state.model is None:
         st.html(f"""

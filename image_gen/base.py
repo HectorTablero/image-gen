@@ -2,7 +2,7 @@ from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, Sub
 from .samplers import BaseSampler, EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
 from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
 from .score_model import ScoreNet
-from typing import Callable, Optional, Union, Literal
+from typing import Callable, Optional, Union, Literal, List, Tuple, Iterable, Dict, Any
 import torch
 from torch.optim import Adam
 from torch import Tensor
@@ -10,7 +10,26 @@ from tqdm.autonotebook import tqdm
 import warnings
 
 
+MODEL_VERSION = 2
+
+
 class GenerativeModel:
+    DIFFUSION_MAP = {
+        "ve": VarianceExploding,
+        "vp": VariancePreserving,
+        "sub-vp": SubVariancePreserving,
+    }
+    NOISE_SCHEDULE_MAP = {
+        "linear": LinearNoiseSchedule,
+        "cosine": CosineNoiseSchedule,
+    }
+    SAMPLER_MAP = {
+        "euler-maruyama": EulerMaruyama,
+        "exponential": ExponentialIntegrator,
+        "ode": ODEProbabilityFlow,
+        "predictor-corrector": PredictorCorrector,
+    }
+
     def __init__(self,
                  diffusion: Optional[Union[BaseDiffusion, type,
                                            Literal["ve", "vp", "sub-vp"]]] = "ve",
@@ -19,26 +38,8 @@ class GenerativeModel:
                  noise_schedule: Optional[Union[BaseNoiseSchedule,
                                                 type, Literal["linear", "cosine"]]] = None,
                  verbose: bool = True) -> None:
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
         self.verbose = verbose
-
-        diffusion_map = {
-            "ve": VarianceExploding,
-            "vp": VariancePreserving,
-            "sub-vp": SubVariancePreserving,
-        }
-        noise_schedule_map = {
-            "linear": LinearNoiseSchedule,
-            "cosine": CosineNoiseSchedule,
-        }
-        sampler_map = {
-            "euler-maruyama": EulerMaruyama,
-            "exponential": ExponentialIntegrator,
-            "ode": ODEProbabilityFlow,
-            "predictor-corrector": PredictorCorrector,
-        }
 
         if diffusion is None:
             diffusion = "ve"
@@ -46,7 +47,7 @@ class GenerativeModel:
         if isinstance(diffusion, str):
             diffusion_key = diffusion.lower()
             try:
-                diffusion = diffusion_map[diffusion_key]
+                diffusion = GenerativeModel.DIFFUSION_MAP[diffusion_key]
             except KeyError:
                 raise ValueError(f"Unknown diffusion string: {diffusion}")
 
@@ -56,7 +57,7 @@ class GenerativeModel:
         if isinstance(sampler, str):
             sampler_key = sampler.lower()
             try:
-                sampler = sampler_map[sampler_key]
+                sampler = GenerativeModel.SAMPLER_MAP[sampler_key]
             except KeyError:
                 raise ValueError(f"Unknown sampler string: {sampler}")
 
@@ -66,7 +67,7 @@ class GenerativeModel:
         if isinstance(noise_schedule, str):
             ns_key = noise_schedule.lower()
             try:
-                noise_schedule = noise_schedule_map[ns_key]
+                noise_schedule = GenerativeModel.NOISE_SCHEDULE_MAP[ns_key]
             except KeyError:
                 raise ValueError(
                     f"Unknown noise_schedule string: {noise_schedule}")
@@ -99,27 +100,46 @@ class GenerativeModel:
             self.sampler = sampler
         self.sampler.verbose = verbose
 
-    def _progress(self, iterable, **kwargs):
+        self.stored_labels = None
+        self._label_map = None
+        self.version = MODEL_VERSION
+
+    @property
+    def device(self) -> torch.device:
+        """Dynamic device property based on model parameters."""
+        if self.model is not None:
+            return next(self.model.parameters()).device
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    @property
+    def version(self) -> int:
+        """Model version."""
+        return self.version
+
+    @property
+    def labels(self) -> List[str]:
+        """Stored labels."""
+        return self._label_map if self._label_map is not None else []
+
+    def _progress(self, iterable: Iterable, **kwargs: Dict[str, Any]) -> Iterable:
         return tqdm(iterable, **kwargs) if self.verbose else iterable
 
-    def _build_default_model(self, shape=(3, 32, 32)) -> ScoreNet:
+    def _build_default_model(self, shape: Tuple[int, int, int] = (3, 32, 32)):
+        device = self.device  # Creating the ScoreNet changes the device, so this line is necessary
         self.num_c = shape[0]
         self.shape = (shape[1], shape[2])
         self.model = ScoreNet(
-            marginal_prob_std=self.diffusion.schedule, num_c=shape[0])
+            marginal_prob_std=self.diffusion.schedule, num_c=shape[0], num_classes=self.num_classes)
         if self.device.type == "cuda":
             self.model = torch.nn.DataParallel(self.model)
-        self.model = self.model.to(self.device)
+        self.model = self.model.to(device)
 
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
-        return self.model(x, t)
-
-    def loss_function(self, x0: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
+    def loss_function(self, x0: torch.Tensor, eps: float = 1e-5, class_labels: Optional[Tensor] = None) -> torch.Tensor:
         t = torch.rand(x0.shape[0], device=x0.device) * (1.0 - eps) + eps
 
         xt, noise = self.diffusion.forward_process(x0, t)
 
-        score = self.model(xt, t)
+        score = self.model(xt, t, class_label=class_labels)
 
         beta_t = self.diffusion.schedule(t).view(
             x0.shape[0], *([1]*(x0.dim()-1)))
@@ -127,10 +147,38 @@ class GenerativeModel:
             (beta_t * score + noise)**2, dim=list(range(1, x0.dim())))
         return torch.mean(mse_per_example)
 
-    def train(self, dataset, epochs=100, batch_size=32, lr=1e-3):
+    def train(
+        self,
+        dataset: Union[
+            torch.utils.data.Dataset,
+            List[Union[Tensor, Tuple[Tensor, Tensor]]]
+        ],
+        epochs: int = 100,
+        batch_size: int = 32,
+        lr: float = 1e-3
+    ) -> None:
         first = dataset[0]
+
+        has_labels = isinstance(
+            first, (list, tuple)) and len(first) > 1
+        if has_labels:
+            all_labels = [
+                label if isinstance(label, Tensor) else torch.tensor(label)
+                for _, label in dataset
+            ]
+            all_labels_tensor = torch.cat([lbl.view(-1) for lbl in all_labels])
+            unique_labels = sorted(all_labels_tensor.unique().tolist())
+
+            self.num_classes = len(unique_labels)
+            self.stored_labels = unique_labels
+            self._label_map = {str(label): idx for idx,
+                               label in enumerate(unique_labels)}
+        else:
+            self.num_classes = None
+
         first = first[0] if isinstance(first, (list, tuple)) else first
         self._build_default_model(shape=first.shape)
+
         optimizer = Adam(self.model.parameters(), lr=lr)
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=True)
@@ -141,13 +189,24 @@ class GenerativeModel:
             num_items = 0
 
             batch_bar = self._progress(
-                dataloader, desc=f'Epoch {epoch+1}', leave=False)
+                dataloader, desc=f'Epoch {epoch + 1}', leave=False)
             for batch in batch_bar:
-                x0 = batch[0] if isinstance(batch, (list, tuple)) else batch
+                if has_labels:
+                    x0, labels = batch[0], batch[1]
+                    labels = labels.to(self.device)
+                else:
+                    x0 = batch
+                    labels = None
+
                 x0 = x0.to(self.device)
 
                 optimizer.zero_grad()
-                loss = self.loss_function(x0)
+
+                if self.num_classes is not None:
+                    loss = self.loss_function(x0, class_labels=labels)
+                else:
+                    loss = self.loss_function(x0)
+
                 loss.backward()
                 optimizer.step()
 
@@ -155,36 +214,121 @@ class GenerativeModel:
                 num_items += x0.shape[0]
                 batch_bar.set_postfix(loss=loss.item())
 
-            epoch_bar.set_postfix(avg_loss=avg_loss/num_items)
+            epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
+
+    def set_labels(self, labels: List[str]):
+        # Check if model has class conditioning
+        if not hasattr(self, 'num_classes') or self.num_classes is None:
+            warnings.warn(
+                "Model not initialized for class conditioning - labels will have no effect")
+            return
+
+        # Check if we have stored numeric labels
+        if not hasattr(self, 'stored_labels') or self.stored_labels is None:
+            warnings.warn(
+                "No class labels stored from training - cannot map string labels")
+            return
+
+        # Validate input length
+        if len(labels) != len(self.stored_labels):
+            raise ValueError(
+                f"Length mismatch: got {len(labels)} string labels, "
+                f"but model has {len(self.stored_labels)} classes. "
+                f"Current numeric labels: {self.stored_labels}"
+            )
+
+        # Create new mapping
+        self._label_map = {
+            string_label: numeric_label
+            for numeric_label, string_label in zip(self.stored_labels, labels)
+        }
+
+    def class_conditional_score(self, class_labels: Union[int, Tensor], num_samples: int, guidance_scale: float = 3.0) -> Callable[[Tensor, Tensor], Tensor]:
+        if class_labels is None:
+            return self.model
+
+        processed_labels = None
+        if self.num_classes is None:
+            warnings.warn(
+                "Ignoring class_labels - model not initialized for class conditioning")
+            return self.model
+
+        # Convert to tensor and ensure proper type (torch.long)
+        if isinstance(class_labels, int):
+            class_labels = torch.full(
+                (num_samples,), class_labels, dtype=torch.long)
+        elif isinstance(class_labels, list):
+            class_labels = torch.tensor(class_labels, dtype=torch.long)
+        elif isinstance(class_labels, Tensor):
+            class_labels = class_labels.long()  # Convert to long if not already
+        else:
+            raise ValueError(
+                "class_labels must be int, list or Tensor")
+
+        class_labels = class_labels.to(self.device)
+
+        # Validate labels
+        if hasattr(self, 'stored_labels') and self.stored_labels is not None:
+            invalid_mask = ~torch.isin(class_labels, torch.tensor(
+                self.stored_labels, device=self.device))
+            if invalid_mask.any():
+                warnings.warn(
+                    f"Invalid labels detected. Valid labels: {self.stored_labels}")
+                # Replace invalid with first valid label
+                class_labels[invalid_mask] = self.stored_labels[0]
+
+        processed_labels = class_labels.to(self.device)
+
+        def guided_score(x: Tensor, t: Tensor) -> Tensor:
+            uncond_score = self.model(x, t, class_label=None)
+
+            # Conditional score - ensure we pass proper labels
+            if processed_labels is not None:
+                # Ensure we have enough labels for the batch
+                if len(processed_labels) != x.shape[0]:
+                    # If single label provided, repeat it for batch
+                    if len(processed_labels) == 1:
+                        current_labels = processed_labels.expand(
+                            x.shape[0])
+                    else:
+                        raise ValueError(
+                            "Number of labels must match batch size or be 1")
+                else:
+                    current_labels = processed_labels
+
+                cond_score = self.model(x, t, class_label=current_labels)
+            else:
+                cond_score = uncond_score
+
+            return uncond_score + guidance_scale * (cond_score - uncond_score)
+
+        return guided_score
 
     def generate(self,
                  num_samples: int,
                  n_steps: int = 500,
                  seed: Optional[int] = None,
-                 selected_class: Optional[int] = None,
+                 class_labels: Optional[Union[int, Tensor]] = None,
                  progress_callback: Optional[Callable[[
-                     Tensor, int], None]] = None,
-                 guidance: Optional[Callable[[
-                     Tensor, Tensor, Tensor], Tensor]] = None
+                     Tensor, int], None]] = None
                  ) -> torch.Tensor:
         if not hasattr(self, 'model') or self.model is None:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
 
-        # TODO: Add class-conditional generation support
+        score_func = self.class_conditional_score(class_labels, num_samples)
 
-        device = next(self.model.parameters()).device
-        x_T = torch.randn(num_samples, self.num_c, *self.shape, device=device)
+        x_T = torch.randn(num_samples, self.num_c, *
+                          self.shape, device=self.device)
 
         self.model.eval()
         with torch.no_grad():
             samples = self.sampler(
                 x_T=x_T,
-                score_model=self.model,
+                score_model=score_func,
                 n_steps=n_steps,
                 seed=seed,
-                callback=progress_callback,
-                guidance=guidance
+                callback=progress_callback
             )
 
         self.model.train()
@@ -195,6 +339,7 @@ class GenerativeModel:
 
     def colorize(self, x: Tensor, n_steps: int = 500,
                  seed: Optional[int] = None,
+                 class_labels: Optional[Union[int, Tensor]] = None,
                  progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
         """Colorize grayscale images using YUV-space luminance enforcement"""
         if not hasattr(self, 'num_c') or self.num_c != 3:
@@ -212,17 +357,16 @@ class GenerativeModel:
         y_target = (y_target - y_target.min()) / \
             (y_target.max() - y_target.min() + 1e-8)
 
-        device = next(self.model.parameters()).device
-        y_target = y_target.to(device).float()
+        y_target = y_target.to(self.device).float()
         batch_size, _, h, w = y_target.shape
 
         with torch.no_grad():
-            uv = torch.rand(batch_size, 2, h, w, device=device) * \
+            uv = torch.rand(batch_size, 2, h, w, device=self.device) * \
                 0.5 - 0.25
             yuv = torch.cat([y_target, uv], dim=1)
             x_init = self._yuv_to_rgb(yuv)
 
-            t_T = torch.ones(batch_size, device=device)
+            t_T = torch.ones(batch_size, device=self.device)
             x_T, _ = self.diffusion.forward_process(x_init, t_T)
 
         def enforce_luminance(x_t: Tensor, t: Tensor) -> Tensor:
@@ -237,14 +381,17 @@ class GenerativeModel:
                 alpha = t.item() / self.diffusion.schedule.max_t
                 return enforced_rgb * (1 - alpha) + x_t * alpha
 
+        score_func = self.class_conditional_score(class_labels, x.shape[0])
+
         self.model.eval()
         with torch.no_grad():
             samples = self.sampler(
                 x_T=x_T,
-                score_model=self.model,
+                score_model=score_func,
                 n_steps=n_steps,
                 guidance=enforce_luminance,
-                callback=progress_callback
+                callback=progress_callback,
+                seed=seed
             )
 
         self.model.train()
@@ -276,6 +423,7 @@ class GenerativeModel:
 
     def imputation(self, x: Tensor, mask: Tensor, n_steps: int = 500,
                    seed: Optional[int] = None,
+                   class_labels: Optional[Union[int, Tensor]] = None,
                    progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
         """Image inpainting with mask-guided generation and proper normalization"""
         if x.shape[-2:] != mask.shape[-2:]:
@@ -284,34 +432,35 @@ class GenerativeModel:
         if mask.shape[1] != 1:
             raise ValueError("Mask must be single-channel")
 
-        device = next(self.model.parameters()).device
-        batch_size, channels, height, width = x.shape
+        batch_size, channels, _, _ = x.shape
 
         input_min = x.min()
         input_max = x.max()
 
         x_normalized = (x - input_min) / (input_max - input_min + 1e-8) * 2 - 1
 
-        generate_mask = mask.to(device).bool()
+        generate_mask = mask.to(self.device).bool()
         generate_mask = generate_mask.expand(-1, channels, -1, -1)
         preserve_mask = ~generate_mask
 
         with torch.no_grad():
-            x_init = x_normalized.clone().to(device)
+            x_init = x_normalized.clone().to(self.device)
             noise = torch.randn_like(x_normalized)
             x_T = torch.where(generate_mask, noise, x_init)
-            t_T = torch.ones(batch_size, device=device)
+            t_T = torch.ones(batch_size, device=self.device)
             x_T, _ = self.diffusion.forward_process(x_T, t_T)
 
-        def inpaint_guidance(x_t: Tensor, t: Tensor) -> Tensor:
+        def inpaint_guidance(x_t: Tensor, _: Tensor) -> Tensor:
             with torch.no_grad():
                 return torch.where(preserve_mask, x_normalized, x_t)
+
+        score_func = self.class_conditional_score(class_labels, batch_size)
 
         self.model.eval()
         with torch.no_grad():
             samples_normalized = self.sampler(
                 x_T=x_T,
-                score_model=self.model,
+                score_model=score_func,
                 n_steps=n_steps,
                 guidance=inpaint_guidance,
                 callback=progress_callback,
@@ -336,6 +485,9 @@ class GenerativeModel:
             'diffusion_type': self.diffusion.__class__.__name__.lower(),
             'sampler_type': self.sampler.__class__.__name__.lower(),
             'num_channels': self.num_c,
+            'stored_labels': self.stored_labels,
+            'label_map': self._label_map,
+            'model_version': MODEL_VERSION,
         }
 
         if hasattr(self.diffusion, 'config'):
@@ -348,7 +500,7 @@ class GenerativeModel:
 
         torch.save(save_data, path)
 
-    def _rebuild_diffusion(self, checkpoint: dict):
+    def _rebuild_diffusion(self, checkpoint: Dict[str, Any]):
         diffusion_map = {
             VarianceExploding.__name__.lower(): VarianceExploding,
             VariancePreserving.__name__.lower(): VariancePreserving,
@@ -369,7 +521,7 @@ class GenerativeModel:
         else:
             self.diffusion = diffusion_cls(**config)
 
-    def _rebuild_noise_schedule(self, checkpoint: dict) -> BaseNoiseSchedule:
+    def _rebuild_noise_schedule(self, checkpoint: Dict[str, Any]) -> BaseNoiseSchedule:
         schedule_map = {
             LinearNoiseSchedule.__name__.lower(): LinearNoiseSchedule,
             CosineNoiseSchedule.__name__.lower(): CosineNoiseSchedule,
@@ -380,7 +532,7 @@ class GenerativeModel:
         config = checkpoint.get('noise_schedule_config', {})
         return schedule_cls(**config)
 
-    def _rebuild_sampler(self, checkpoint: dict):
+    def _rebuild_sampler(self, checkpoint: Dict[str, Any]):
         sampler_map = {
             EulerMaruyama.__name__.lower(): EulerMaruyama,
             ExponentialIntegrator.__name__.lower(): ExponentialIntegrator,
@@ -393,101 +545,36 @@ class GenerativeModel:
         self.sampler = sampler_cls(self.diffusion, verbose=self.verbose)
 
     def load(self, path: str):
+        # TODO: Version-based model loading
+
+        self.model = None
+
         checkpoint = torch.load(path)
 
         self._rebuild_diffusion(checkpoint)
         self._rebuild_sampler(checkpoint)
 
+        self.stored_labels = checkpoint.get('stored_labels')
+        self.num_classes = len(
+            self.stored_labels) if self.stored_labels is not None else None
+        self._label_map = checkpoint.get('label_map')
+        self.version = checkpoint.get('model_version')
+
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to grayscale
         self.shape = checkpoint.get('shape', (32, 32))
 
-        # Check if we need to rebuild the model with the correct number of channels
-        if not hasattr(self, 'model') or not hasattr(self, 'num_c') or self.num_c != checkpoint_channels:
-            print(
-                f"Rebuilding model to match checkpoint channels: {checkpoint_channels}")
-            self._build_default_model(shape=(checkpoint_channels, *self.shape))
+        self._build_default_model(shape=(checkpoint_channels, *self.shape))
 
         try:
-            # First try regular loading
             self.model.load_state_dict(checkpoint['model_state'])
         except RuntimeError as e:
-            print(f"Warning: Failed to load model state with error: {e}")
-            print("Attempting to load with channel adaptation...")
-
-            # If that fails, try partial loading with adaptation
-            self._load_with_channel_adaptation(checkpoint['model_state'])
-
-        if not hasattr(self, 'diffusion'):
-            self.diffusion = BaseDiffusion.from_config(
-                checkpoint['diffusion_config'])
-        if not hasattr(self, 'sampler'):
-            self.sampler = BaseSampler.from_config(
-                checkpoint['sampler_config'])
-
-    def _load_with_channel_adaptation(self, state_dict):
-        """Load state dict with adaptation for different channel counts."""
-        current_state = self.model.state_dict()
-
-        # Filter and potentially adapt weights
-        adapted_state = {}
-        for key, checkpoint_param in state_dict.items():
-            if key in current_state:
-                current_param = current_state[key]
-
-                # If shapes match exactly, use as is
-                if checkpoint_param.shape == current_param.shape:
-                    adapted_state[key] = checkpoint_param
-                    continue
-
-                # Handle first conv layer (input channels adaptation)
-                if 'conv1.weight' in key:
-                    if current_param.shape[1] > checkpoint_param.shape[1]:
-                        # RGB model loading grayscale weights
-                        # Repeat the grayscale channel across RGB
-                        adapted_param = checkpoint_param.repeat(
-                            1, current_param.shape[1], 1, 1)
-                        # Normalize to maintain the same magnitude
-                        adapted_param = adapted_param / current_param.shape[1]
-                        adapted_state[key] = adapted_param
-                    else:
-                        # Skip this case (can't adapt from RGB to grayscale)
-                        print(
-                            f"Skipping {key}: can't adapt from more to fewer channels")
-
-                # Handle final conv/tconv layer (output channels adaptation)
-                elif 'tconv1.weight' in key or 'tconv1.bias' in key:
-                    if 'weight' in key:
-                        if current_param.shape[0] > checkpoint_param.shape[0]:
-                            # Repeat the single channel for RGB output
-                            adapted_param = checkpoint_param.repeat(
-                                current_param.shape[0], 1, 1, 1)
-                            adapted_state[key] = adapted_param
-                        else:
-                            # Use just the first channel if going from RGB to grayscale
-                            adapted_state[key] = checkpoint_param[:current_param.shape[0]]
-                    elif 'bias' in key:
-                        if current_param.shape[0] > checkpoint_param.shape[0]:
-                            # Repeat bias for RGB
-                            adapted_state[key] = checkpoint_param.repeat(
-                                current_param.shape[0])
-                        else:
-                            # Use subset of bias values
-                            adapted_state[key] = checkpoint_param[:current_param.shape[0]]
-
-                # For other layers, if dimensions don't match, skip
-                else:
-                    print(
-                        f"Skipping {key}: shape mismatch - checkpoint {checkpoint_param.shape} vs model {current_param.shape}")
-            else:
-                print(f"Parameter {key} not found in current model")
-
-        # Load the adapted state dict
-        if adapted_state:
-            # Use strict=False to load partial state dict
-            self.model.load_state_dict(adapted_state, strict=False)
-            print(
-                f"Loaded {len(adapted_state)}/{len(state_dict)} parameters with adaptation")
+            try:
+                new_state_dict = {
+                    k.replace('module.', ''): v for k, v in checkpoint['model_state'].items()}
+                self.model.load_state_dict(new_state_dict)
+            except RuntimeError as e2:
+                print(f"Warning: Failed to load model state with error: {e}")
 
     def __str__(self) -> str:
         components = [
