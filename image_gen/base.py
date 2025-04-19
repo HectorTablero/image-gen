@@ -102,7 +102,7 @@ class GenerativeModel:
 
         self.stored_labels = None
         self._label_map = None
-        self.version = MODEL_VERSION
+        self._version = MODEL_VERSION # HE CAMBIADO self.version por self._version
 
     @property
     def device(self) -> torch.device:
@@ -114,7 +114,7 @@ class GenerativeModel:
     @property
     def version(self) -> int:
         """Model version."""
-        return self.version
+        return self._version          # HE CAMBIADO self.version por self._version
 
     @property
     def labels(self) -> List[str]:
@@ -167,12 +167,19 @@ class GenerativeModel:
                 for _, label in dataset
             ]
             all_labels_tensor = torch.cat([lbl.view(-1) for lbl in all_labels])
-            unique_labels = sorted(all_labels_tensor.unique().tolist())
+            self.stored_labels = sorted(all_labels_tensor.unique().tolist())
 
-            self.num_classes = len(unique_labels)
-            self.stored_labels = unique_labels
-            self._label_map = {str(label): idx for idx,
-                               label in enumerate(unique_labels)}
+            # Crear mapeo de labels originales a índices 0-based
+            self._label_to_index = {
+                lbl: idx for idx, lbl in enumerate(self.stored_labels)
+            }
+            self.num_classes = len(self.stored_labels)
+
+            # Mapear todas las etiquetas a índices
+            self._mapped_labels = torch.tensor([
+                self._label_to_index[lbl.item()]
+                for lbl in all_labels_tensor
+            ])
         else:
             self.num_classes = None
 
@@ -192,8 +199,12 @@ class GenerativeModel:
                 dataloader, desc=f'Epoch {epoch + 1}', leave=False)
             for batch in batch_bar:
                 if has_labels:
-                    x0, labels = batch[0], batch[1]
-                    labels = labels.to(self.device)
+                    x0, original_labels = batch[0], batch[1]
+                    # Convertir labels originales a índices mapeados
+                    labels = torch.tensor([
+                        self._label_to_index[lbl.item()] 
+                        for lbl in original_labels
+                    ], device=self.device)
                 else:
                     x0 = batch
                     labels = None

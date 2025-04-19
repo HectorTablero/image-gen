@@ -30,6 +30,7 @@ from torch import Tensor
 from typing import Callable, Optional
 from tqdm.autonotebook import tqdm
 
+
 class ExponentialIntegrator(BaseSampler):
     def __call__(
         self,
@@ -39,8 +40,9 @@ class ExponentialIntegrator(BaseSampler):
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
-        guidance: Optional[Callable[[Tensor, Tensor, Tensor], Tensor]] = None
+        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None
     ) -> Tensor:
+
         if seed is not None:
             torch.manual_seed(seed)
 
@@ -55,53 +57,52 @@ class ExponentialIntegrator(BaseSampler):
 
         for i in iterable:
             t_curr = times[i]
-            t_next = times[i+1]
+
             t_batch = torch.full((x_T.shape[0],), t_curr, device=device)
 
-            # Manejo de estabilidad numérica
+            t_for_score = t_batch
+
             if torch.isnan(x_t).any() or torch.isinf(x_t).any():
+                if self.verbose:
+                    print(
+                        f"Warning: NaN or Inf values detected in x_t at step {i}")
                 x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
 
-            # Cálculo del score
             try:
                 with torch.enable_grad():
                     x_t.requires_grad_(True)
-                    score = score_model(x_t, t_batch)
-                    
-                    if guidance is not None:
-                        score = guidance(x_t, t_batch, score)
-                    
+                    score = score_model(x_t, t_for_score)
                     x_t.requires_grad_(False)
-                
-                score = torch.nan_to_num(score, nan=0.0)
+
+                if torch.isnan(score).any():
+                    if self.verbose:
+                        print(
+                            f"Warning: NaN values in score at step {i}, t={t_curr}")
+                    score = torch.nan_to_num(score, nan=0.0)
             except Exception as e:
-                print(f"Error en cálculo de score: {e}")
+                print(f"Error computing score at step {i}, t={t_curr}: {e}")
                 score = torch.zeros_like(x_t)
                 x_t.requires_grad_(False)
 
-            # Coeficientes SDE/ODE
             drift, diffusion = self.diffusion.backward_sde(x_t, t_batch, score)
             diffusion = torch.nan_to_num(diffusion, nan=1e-4)
+            noise = torch.randn_like(x_t)
             
-            # ===== Paso Exponential Integrator =====
-            # Calcular términos exponenciales (adaptado de EDM/Karras et al.)
-            sigma_curr = t_curr
-            sigma_next = t_next
-            sigma_ratio = (sigma_next / sigma_curr).pow(2)
+            # Exponential integration scheme instead of linear Euler-Maruyama
+            # For systems with drift terms that are linear in x (like VP diffusion),
+            # this provides a more accurate and stable integration
+            exp_dt = drift * (-dt)
+            exp_dt = torch.clamp(exp_dt, min=-10.0, max=10.0)  # Prevent numerical instability
+            exp_term = torch.exp(exp_dt)
             
-            # Término exponencial principal
-            exp_factor = torch.sqrt(sigma_ratio)
-            
-            # Término de corrección con score
-            score_correction = (sigma_curr**2 - sigma_next**2) * score
-            
-            # Actualización semi-analítica
-            x_t = x_t * exp_factor + score_correction
-            
-            # Clamping de seguridad
+            # Apply exponential update
+            x_t = x_t * exp_term + diffusion * torch.sqrt(torch.abs(dt)) * noise
+
+            if guidance is not None:
+                x_t = guidance(x_t, t_curr)
+
             x_t = torch.clamp(x_t, -10.0, 10.0)
 
-            # Monitoreo y callbacks
             if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
                 print(
                     f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
