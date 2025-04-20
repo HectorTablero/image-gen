@@ -27,6 +27,7 @@ class ODEProbabilityFlow(BaseSampler):
         callback_frequency: int = 50,
         guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None
     ) -> Tensor:
+
         if seed is not None:
             torch.manual_seed(seed)
 

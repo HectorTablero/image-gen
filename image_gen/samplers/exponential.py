@@ -97,8 +97,7 @@ class ExponentialIntegrator(BaseSampler):
             exp_term = torch.exp(exp_dt)
 
             # Apply exponential update
-            x_t = x_t * exp_term + diffusion * \
-                torch.sqrt(torch.abs(dt)) * noise
+            x_t = x_t * exp_term + diffusion * torch.sqrt(torch.abs(dt)) * noise
 
             if guidance is not None:
                 x_t = guidance(x_t, t_curr)

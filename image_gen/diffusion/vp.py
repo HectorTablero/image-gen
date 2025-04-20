@@ -33,3 +33,5 @@ class VariancePreserving(BaseDiffusion):
         x_t = signal_coef * x0 + noise_coef * noise
 
         return x_t, noise
+    
+    
