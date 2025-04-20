@@ -5,9 +5,10 @@ import math
 
 
 class CosineNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, max_t: float = 1000.0, s: float = 0.008, beta_max: float = 20.0):
+    def __init__(self, max_t: float = 1000.0, s: float = 0.008, beta_min: float = 0.1, beta_max: float = 20.0):
         super().__init__(max_t)
         self.s = s
+        self.beta_min = beta_min  # Currently unused, but needed for compatibility
         self.beta_max = beta_max
 
     def __call__(self, t: Tensor) -> Tensor:

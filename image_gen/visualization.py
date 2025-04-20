@@ -1,33 +1,15 @@
 from torch import Tensor
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import animation
-from typing import Tuple, Optional, Callable
+from typing import Tuple
 import torch
+from matplotlib import animation
 from .base import GenerativeModel
 
 
-def preview_generation(model: GenerativeModel, num_samples: int = 16, n_steps: int = 500,
-                       figsize: Tuple[int, int] = (10, 10), **kwargs) -> Tuple[plt.Figure, plt.Axes]:
-    """
-    Generates a set of images and displays them in a grid.
+# TODO: Hacer que los colores de evolution (ambas funciones) se van igual que en display_images
 
-    Args:
-        model: The generative model to use for image generation.
-        num_samples: Number of images to generate.
-        n_steps: Number of diffusion steps for generation.
-        figsize: Size of the figure to display.
-        **kwargs: Additional keyword arguments for display_images.
-
-    Returns:
-        Figure and axes containing the image grid.
-    """
-    samples = model.generate(num_samples=num_samples, n_steps=n_steps)
-    return display_images(samples, figsize=figsize, **kwargs)
-
-
-def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int = 500,
-                      figsize: Tuple[int, int] = (10, 10), **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int = 500, **kwargs):
     """
     Visualizes the diffusion process by showing intermediate steps at 10% intervals.
 
@@ -37,9 +19,6 @@ def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int
         n_steps: Number of diffusion steps for generation.
         figsize: Size of the figure to display.
         **kwargs: Additional keyword arguments for matplotlib.
-
-    Returns:
-        Figure and axes showing the evolution of generated images.
     """
     captured_steps = []
     callback_freq = max(n_steps // 10, 1)
@@ -50,6 +29,7 @@ def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int
 
     model.generate(
         num_samples=num_samples,
+        **kwargs,
         n_steps=n_steps,
         progress_callback=progress_callback,
         callback_frequency=callback_freq
@@ -63,7 +43,8 @@ def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int
 
     # Prepare figure
     num_steps_captured = captured_images.shape[-1]
-    fig, axs = plt.subplots(num_samples, num_steps_captured, figsize=figsize)
+    fig, axs = plt.subplots(
+        num_samples, num_steps_captured, figsize=(10, int(num_samples * 1.25)))
     if num_samples == 1:
         axs = axs.reshape(1, -1)
 
@@ -79,11 +60,10 @@ def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int
             ax.axis('off')
 
     plt.tight_layout()
-    return fig, axs
+    plt.show()
 
 
-def create_evolution_widget(model: GenerativeModel, n_steps: int = 500,
-                            figsize: Tuple[int, int] = (6, 6), **kwargs) -> animation.FuncAnimation:
+def create_evolution_widget(model: GenerativeModel, figsize: Tuple[int, int] = (6, 6), **kwargs) -> animation.FuncAnimation:
     """
     Creates an interactive animation showing the diffusion process.
 
@@ -103,9 +83,9 @@ def create_evolution_widget(model: GenerativeModel, n_steps: int = 500,
 
     model.generate(
         num_samples=1,
-        n_steps=n_steps,
+        **kwargs,
         progress_callback=progress_callback,
-        callback_frequency=1
+        callback_frequency=1,
     )
 
     # Process captured images
@@ -135,7 +115,11 @@ def create_evolution_widget(model: GenerativeModel, n_steps: int = 500,
     anim = animation.FuncAnimation(
         fig, update, frames=len(captured_images), interval=50, blit=True
     )
-    return anim.to_jshtml()
+
+    # Prevents static display of the last frame in Jupyter notebooks
+    plt.close(fig)
+
+    return anim
 
 
 def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **kwargs):
@@ -146,9 +130,6 @@ def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **k
         images: Tensor of images to display (N, C, H, W).
         figsize: Size of the figure.
         **kwargs: Additional keyword arguments for matplotlib.
-
-    Returns:
-        Figure and array of axes containing the images.
     """
     num_images = images.shape[0]
     row_size = int(np.sqrt(num_images))

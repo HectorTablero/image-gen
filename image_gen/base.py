@@ -18,25 +18,31 @@ class GenerativeModel:
         "ve": VarianceExploding,
         "vp": VariancePreserving,
         "sub-vp": SubVariancePreserving,
+        "svp": SubVariancePreserving,
     }
     NOISE_SCHEDULE_MAP = {
         "linear": LinearNoiseSchedule,
+        "lin": LinearNoiseSchedule,
         "cosine": CosineNoiseSchedule,
+        "cos": CosineNoiseSchedule,
     }
     SAMPLER_MAP = {
         "euler-maruyama": EulerMaruyama,
+        "em": EulerMaruyama,
         "exponential": ExponentialIntegrator,
+        "exp": ExponentialIntegrator,
         "ode": ODEProbabilityFlow,
         "predictor-corrector": PredictorCorrector,
+        "pred": PredictorCorrector,
     }
 
     def __init__(self,
                  diffusion: Optional[Union[BaseDiffusion, type,
-                                           Literal["ve", "vp", "sub-vp"]]] = "ve",
+                                           Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
                  sampler: Optional[Union[BaseSampler, type,
-                                         Literal["euler-maruyama", "exponential", "ode", "predictor-corrector"]]] = "euler-maruyama",
+                                         Literal["euler-maruyama", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
                  noise_schedule: Optional[Union[BaseNoiseSchedule,
-                                                type, Literal["linear", "cosine"]]] = None,
+                                                type, Literal["linear", "lin", "cosine", "cos"]]] = None,
                  verbose: bool = True) -> None:
         self.model = None
         self.verbose = verbose
@@ -126,7 +132,7 @@ class GenerativeModel:
 
     def _build_default_model(self, shape: Tuple[int, int, int] = (3, 32, 32)):
         device = self.device  # Creating the ScoreNet changes the device, so this line is necessary
-        self.num_c = shape[0]
+        self.num_channels = shape[0]
         self.shape = (shape[1], shape[2])
         self.model = ScoreNet(
             marginal_prob_std=self.diffusion.schedule, num_c=shape[0], num_classes=self.num_classes)
@@ -330,7 +336,7 @@ class GenerativeModel:
 
         score_func = self.class_conditional_score(class_labels, num_samples)
 
-        x_T = torch.randn(num_samples, self.num_c, *
+        x_T = torch.randn(num_samples, self.num_channels, *
                           self.shape, device=self.device)
 
         self.model.eval()
@@ -355,7 +361,7 @@ class GenerativeModel:
                  class_labels: Optional[Union[int, Tensor]] = None,
                  progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
         """Colorize grayscale images using YUV-space luminance enforcement"""
-        if not hasattr(self, 'num_c') or self.num_c != 3:
+        if not hasattr(self, 'num_channels') or self.num_channels != 3:
             raise ValueError("Colorization requires a 3-channel model")
 
         if x.dim() == 3:
@@ -497,7 +503,7 @@ class GenerativeModel:
             'shape': self.shape,
             'diffusion_type': self.diffusion.__class__.__name__.lower(),
             'sampler_type': self.sampler.__class__.__name__.lower(),
-            'num_channels': self.num_c,
+            'num_channels': self.num_channels,
             'stored_labels': self.stored_labels,
             'label_map': self._label_map,
             'model_version': MODEL_VERSION,
@@ -592,7 +598,7 @@ class GenerativeModel:
     def __str__(self) -> str:
         components = [
             f"Input shape: {getattr(self, 'shape', 'Not initialized')}",
-            f"Channels: {getattr(self, 'num_c', 'Not initialized')}",
+            f"Channels: {getattr(self, 'num_channels', 'Not initialized')}",
             f"Diffusion: {str(self.diffusion) if hasattr(self, 'diffusion') else 'None'}",
             f"Sampler: {str(self.sampler) if hasattr(self, 'sampler') else 'None'}"
         ]

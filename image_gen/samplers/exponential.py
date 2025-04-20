@@ -87,25 +87,27 @@ class ExponentialIntegrator(BaseSampler):
             drift, diffusion = self.diffusion.backward_sde(x_t, t_batch, score)
             diffusion = torch.nan_to_num(diffusion, nan=1e-4)
             noise = torch.randn_like(x_t)
-            
+
             # Exponential integration scheme instead of linear Euler-Maruyama
             # For systems with drift terms that are linear in x (like VP diffusion),
             # this provides a more accurate and stable integration
             exp_dt = drift * (-dt)
-            exp_dt = torch.clamp(exp_dt, min=-10.0, max=10.0)  # Prevent numerical instability
+            # Prevent numerical instability
+            exp_dt = torch.clamp(exp_dt, min=-10.0, max=10.0)
             exp_term = torch.exp(exp_dt)
-            
+
             # Apply exponential update
-            x_t = x_t * exp_term + diffusion * torch.sqrt(torch.abs(dt)) * noise
+            x_t = x_t * exp_term + diffusion * \
+                torch.sqrt(torch.abs(dt)) * noise
 
             if guidance is not None:
                 x_t = guidance(x_t, t_curr)
 
             x_t = torch.clamp(x_t, -10.0, 10.0)
 
-            if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
-                print(
-                    f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
+            # if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
+            #     print(
+            #         f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
 
             if callback and i % callback_frequency == 0:
                 callback(x_t.detach().clone(), i)

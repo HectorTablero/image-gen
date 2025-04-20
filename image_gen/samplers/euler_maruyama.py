@@ -70,9 +70,9 @@ class EulerMaruyama(BaseSampler):
 
             x_t = torch.clamp(x_t, -10.0, 10.0)
 
-            if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
-                print(
-                    f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
+            # if self.verbose and (i % callback_frequency == 0 or torch.isnan(x_t).any()):
+            #     print(
+            #         f"Step {i}: t={t_curr:.3f}, mean={x_t.mean().item():.3f}, std={x_t.std().item():.3f}")
 
             if callback and i % callback_frequency == 0:
                 callback(x_t.detach().clone(), i)

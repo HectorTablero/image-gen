@@ -27,10 +27,6 @@ class BaseDiffusion(ABC):
 
         return f - g_squared * score, g
 
-    @abstractmethod
-    def config(self) -> dict:
-        pass
-
     def __str__(self) -> str:
         config = self.config()
         params = ", ".join(f"{k}: {v}" for k, v in config.items())
