@@ -659,7 +659,7 @@ def main():
     if 'model_name' not in st.session_state:
         st.session_state.model_name = None
     if 'model_dir' not in st.session_state:
-        st.session_state.model_dir = "saved_models"
+        st.session_state.model_dir = "saved_models/examples"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
     if 'settings' not in st.session_state:

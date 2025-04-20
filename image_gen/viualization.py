@@ -1,0 +1,173 @@
+from torch import Tensor
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import animation
+from typing import Tuple, Optional, Callable
+import torch
+from .base import GenerativeModel
+
+
+def preview_generation(model: GenerativeModel, num_samples: int = 16, n_steps: int = 500,
+                       figsize: Tuple[int, int] = (10, 10), **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Generates a set of images and displays them in a grid.
+
+    Args:
+        model: The generative model to use for image generation.
+        num_samples: Number of images to generate.
+        n_steps: Number of diffusion steps for generation.
+        figsize: Size of the figure to display.
+        **kwargs: Additional keyword arguments for display_images.
+
+    Returns:
+        Figure and axes containing the image grid.
+    """
+    samples = model.generate(num_samples=num_samples, n_steps=n_steps)
+    return display_images(samples, figsize=figsize, **kwargs)
+
+
+def display_evolution(model: GenerativeModel, num_samples: int = 5, n_steps: int = 500,
+                      figsize: Tuple[int, int] = (10, 10), **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Visualizes the diffusion process by showing intermediate steps at 10% intervals.
+
+    Args:
+        model: The generative model to use for image generation.
+        num_samples: Number of images to generate.
+        n_steps: Number of diffusion steps for generation.
+        figsize: Size of the figure to display.
+        **kwargs: Additional keyword arguments for matplotlib.
+
+    Returns:
+        Figure and axes showing the evolution of generated images.
+    """
+    captured_steps = []
+    callback_freq = max(n_steps // 10, 1)
+
+    def progress_callback(x_t: Tensor, step: int):
+        if step % callback_freq == 0 or step == n_steps:
+            captured_steps.append(x_t.detach().cpu())
+
+    model.generate(
+        num_samples=num_samples,
+        n_steps=n_steps,
+        progress_callback=progress_callback,
+        callback_frequency=callback_freq
+    )
+
+    # Stack and normalize images
+    # (num_samples, C, H, W, num_steps)
+    captured_images = torch.stack(captured_steps, dim=-1)
+    captured_images = (captured_images + 1) / 2
+    captured_images = np.clip(captured_images.numpy(), 0, 1)
+
+    # Prepare figure
+    num_steps_captured = captured_images.shape[-1]
+    fig, axs = plt.subplots(num_samples, num_steps_captured, figsize=figsize)
+    if num_samples == 1:
+        axs = axs.reshape(1, -1)
+
+    # Plot each step
+    for sample_idx in range(num_samples):
+        for step_idx in range(num_steps_captured):
+            ax = axs[sample_idx, step_idx]
+            img = captured_images[sample_idx, ..., step_idx]
+            if img.shape[0] == 1:  # Grayscale
+                ax.imshow(img[0], cmap='gray')
+            else:  # RGB
+                ax.imshow(np.transpose(img, (1, 2, 0)))
+            ax.axis('off')
+
+    plt.tight_layout()
+    return fig, axs
+
+
+def create_evolution_widget(model: GenerativeModel, n_steps: int = 500,
+                            figsize: Tuple[int, int] = (6, 6), **kwargs) -> animation.FuncAnimation:
+    """
+    Creates an interactive animation showing the diffusion process.
+
+    Args:
+        model: The generative model to use for image generation.
+        n_steps: Number of diffusion steps for generation.
+        figsize: Size of the animation figure.
+        **kwargs: Additional keyword arguments for matplotlib.
+
+    Returns:
+        Matplotlib animation object that can be displayed in notebooks.
+    """
+    captured_steps = []
+
+    def progress_callback(x_t: Tensor, step: int):
+        captured_steps.append(x_t.detach().cpu())
+
+    model.generate(
+        num_samples=1,
+        n_steps=n_steps,
+        progress_callback=progress_callback,
+        callback_frequency=1
+    )
+
+    # Process captured images
+    captured_images = torch.stack(
+        captured_steps, dim=0).squeeze(1)  # (steps, C, H, W)
+    captured_images = (captured_images + 1) / 2
+    captured_images = np.clip(captured_images.numpy(), 0, 1)
+    captured_images = np.transpose(
+        captured_images, (0, 2, 3, 1))  # (steps, H, W, C)
+
+    # Create animation
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.axis('off')
+
+    if captured_images.shape[-1] == 1:
+        img = ax.imshow(captured_images[0, ..., 0], cmap='gray')
+    else:
+        img = ax.imshow(captured_images[0])
+
+    def update(frame):
+        if captured_images.shape[-1] == 1:
+            img.set_data(captured_images[frame, ..., 0])
+        else:
+            img.set_data(captured_images[frame])
+        return [img]
+
+    anim = animation.FuncAnimation(
+        fig, update, frames=len(captured_images), interval=50, blit=True
+    )
+    return anim.to_jshtml()
+
+
+def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **kwargs):
+    """
+    Displays a grid of generated images.
+
+    Args:
+        images: Tensor of images to display (N, C, H, W).
+        figsize: Size of the figure.
+        **kwargs: Additional keyword arguments for matplotlib.
+
+    Returns:
+        Figure and array of axes containing the images.
+    """
+    num_images = images.shape[0]
+    row_size = int(np.sqrt(num_images))
+    num_rows = int(np.ceil(num_images / row_size))
+    num_channels = images.shape[1]
+
+    images = images.permute(0, 2, 3, 1).cpu().detach().numpy()
+    images = (images + 1) / 2  # Scale from [-1,1] to [0,1]
+    images = np.clip(images, 0, 1)  # Ensure values remain in [0,1]
+
+    fig, axes = plt.subplots(row_size, num_rows, figsize=figsize)
+    axes = axes.flatten()
+
+    for idx, img in enumerate(images):
+        if num_channels == 1:
+            axes[idx].imshow(img, cmap="gray")
+        else:
+            axes[idx].imshow(img)
+        axes[idx].axis('off')
+
+    for idx in range(num_images, len(axes)):
+        axes[idx].axis('off')

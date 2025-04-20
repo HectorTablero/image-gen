@@ -102,7 +102,7 @@ class GenerativeModel:
 
         self.stored_labels = None
         self._label_map = None
-        self._version = MODEL_VERSION # HE CAMBIADO self.version por self._version
+        self._version = MODEL_VERSION
 
     @property
     def device(self) -> torch.device:
@@ -114,7 +114,7 @@ class GenerativeModel:
     @property
     def version(self) -> int:
         """Model version."""
-        return self._version          # HE CAMBIADO self.version por self._version
+        return self._version
 
     @property
     def labels(self) -> List[str]:
@@ -202,7 +202,7 @@ class GenerativeModel:
                     x0, original_labels = batch[0], batch[1]
                     # Convertir labels originales a índices mapeados
                     labels = torch.tensor([
-                        self._label_to_index[lbl.item()] 
+                        self._label_to_index[lbl.item()]
                         for lbl in original_labels
                     ], device=self.device)
                 else:
@@ -321,7 +321,8 @@ class GenerativeModel:
                  seed: Optional[int] = None,
                  class_labels: Optional[Union[int, Tensor]] = None,
                  progress_callback: Optional[Callable[[
-                     Tensor, int], None]] = None
+                     Tensor, int], None]] = None,
+                 callback_frequency: int = 50
                  ) -> torch.Tensor:
         if not hasattr(self, 'model') or self.model is None:
             raise ValueError(
@@ -339,7 +340,8 @@ class GenerativeModel:
                 score_model=score_func,
                 n_steps=n_steps,
                 seed=seed,
-                callback=progress_callback
+                callback=progress_callback,
+                callback_frequency=callback_frequency
             )
 
         self.model.train()
@@ -569,7 +571,7 @@ class GenerativeModel:
         self.num_classes = len(
             self.stored_labels) if self.stored_labels is not None else None
         self._label_map = checkpoint.get('label_map')
-        self.version = checkpoint.get('model_version')
+        self._version = checkpoint.get('model_version')
 
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to grayscale
