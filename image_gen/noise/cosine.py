@@ -1,49 +1,35 @@
 from .base import BaseNoiseSchedule
-from torch import Tensor
 import torch
-import math
+from torch import Tensor
+import numpy as np
 
 
 class CosineNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, max_t: float = 1.0, s: float = 0.008, beta_min: float = 0.0001, beta_max: float = 0.999):
-        """
-        Implements the cosine noise schedule as described in the paper.
-        
-        Args:
-            max_t: Maximum timestep value (corresponds to T in the equations)
-            s: Offset parameter for the cosine schedule
-            beta_min: Minimum value for β(t)
-            beta_max: Maximum value for β(t)
-        """
+    def __init__(self, max_t: float = 500.0, s: float = 0.008, beta_min: float = 0.1, beta_max: float = 50.0):
         super().__init__(max_t)
-        self.s = s  # offset parameter
+        self.s = s
         self.beta_min = beta_min
         self.beta_max = beta_max
-    
-    def alpha_bar(self, t: Tensor) -> Tensor:
-        """Compute ᾱ(t) according to the cosine schedule."""
-        # Normalize t to [0, 1]
-        t_norm = (t / self.max_t).clamp(0.0, 1.0)
-        
-        # Compute angle
-        angle_num = math.pi/2 * (t_norm + self.s)/(1 + self.s)
-        angle_den = math.pi/2 * self.s/(1 + self.s)
-        
-        # Compute ᾱ(t)
-        numerator = torch.cos(angle_num) ** 2
-        denominator = math.cos(angle_den) ** 2
-        
-        return numerator / denominator
 
-    
+    def _alpha_t(self, t: Tensor) -> Tensor:
+        angle1 = np.pi / 2 * (t / self.max_t + self.s) / (1.0 + self.s)
+        cos1 = torch.cos(angle1) ** 2
+
+        angle2 = np.pi / 2 * self.s / (1.0 + self.s)
+        cos2 = np.cos(angle2) ** 2
+
+        return cos1 / cos2
+
     def __call__(self, t: Tensor) -> Tensor:
-        return torch.clamp(1. - self.alpha_bar(t), max=0.999)
-    
+        beta = 1.0 - self._alpha_t(t) / self._alpha_t(t - 1.0)
+        beta = torch.clamp(beta, max=0.999)
+
+        return self.beta_min + (self.beta_max - self.beta_min) * beta
+
     def config(self) -> dict:
         return {
             "max_t": self.max_t,
             "s": self.s,
             "beta_min": self.beta_min,
-            "beta_max": self.beta_max,
+            "beta_max": self.beta_max
         }
-

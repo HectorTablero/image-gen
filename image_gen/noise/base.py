@@ -4,7 +4,7 @@ from typing import Optional
 
 
 class BaseNoiseSchedule(ABC):
-    def __init__(self, max_t: Optional[float] = 1000.0):
+    def __init__(self, max_t: Optional[float] = 500.0):
         self.max_t = max_t
 
     @abstractmethod
