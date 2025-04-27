@@ -2,7 +2,8 @@ from .base import BaseDiffusion
 from ..noise import BaseNoiseSchedule
 import torch
 from torch import Tensor
-from typing import Tuple, Optional
+from typing import Tuple
+import numpy as np
 
 
 class VarianceExplodingSchedule(BaseNoiseSchedule):
@@ -15,7 +16,7 @@ class VarianceExplodingSchedule(BaseNoiseSchedule):
         return torch.sqrt(0.5 * (self.sigma ** (2 * t) - 1.0) / log_sigma)
 
     def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
-        pass
+        return 0.5 * (self.sigma ** (2 * t) - 1) / np.log(self.sigma)
 
     def config(self) -> dict:
         return {

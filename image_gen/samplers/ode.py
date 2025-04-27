@@ -72,7 +72,8 @@ class ODEProbabilityFlow(BaseSampler):
                 x_t.requires_grad_(False)
 
             # Get drift from backward SDE
-            drift, _ = self.diffusion.backward_sde(x_t, t_batch, score)
+            drift, _ = self.diffusion.backward_sde(
+                x_t, t_batch, score, n_steps=n_steps)
 
             # For Probability Flow ODE, we use only the drift term (no noise)
             x_t = x_t + drift * (-dt)

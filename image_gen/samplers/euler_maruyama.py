@@ -60,7 +60,8 @@ class EulerMaruyama(BaseSampler):
                 score = torch.zeros_like(x_t)
                 x_t.requires_grad_(False)
 
-            drift, diffusion = self.diffusion.backward_sde(x_t, t_batch, score)
+            drift, diffusion = self.diffusion.backward_sde(
+                x_t, t_batch, score, n_steps=n_steps)
             diffusion = torch.nan_to_num(diffusion, nan=1e-4)
             noise = torch.randn_like(x_t)
 
