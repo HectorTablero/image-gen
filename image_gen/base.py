@@ -144,23 +144,9 @@ class GenerativeModel:
         t = torch.rand(x0.shape[0], device=x0.device) * (1.0 - eps) + eps
         xt, noise = self.diffusion.forward_process(x0, t)
         score = self.model(xt, t, class_label=class_labels)
+        loss_per_example = self.diffusion.compute_loss(score, noise, t)
+        return torch.mean(loss_per_example)
 
-        if isinstance(self.diffusion, VarianceExploding):
-            coeff = self.diffusion.schedule(t)
-        elif isinstance(self.diffusion, (VariancePreserving, SubVariancePreserving)):
-            beta_t = self.diffusion.schedule(t)
-            integral = self.diffusion.schedule.beta_min * t + \
-                (self.diffusion.schedule.beta_max - self.diffusion.schedule.beta_min) * \
-                    (t**2) / (2 * self.diffusion.schedule.max_t)
-            alpha_bar_t = torch.exp(-integral)
-            coeff = torch.sqrt(1.0 - alpha_bar_t)
-        else:
-            raise ValueError("Tipo de difusión no soportado")
-
-        coeff = coeff.view(x0.shape[0], *([1]*(x0.dim()-1)))
-        mse_per_example = torch.sum((coeff * score + noise)**2, dim=list(range(1, x0.dim())))
-        return torch.mean(mse_per_example)
-        
     def train(
         self,
         dataset: Union[

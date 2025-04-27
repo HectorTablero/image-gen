@@ -6,18 +6,19 @@ from typing import Tuple, Optional
 
 
 class VarianceExplodingSchedule(BaseNoiseSchedule):
-    def __init__(self, max_t: int, sigma: float):
-        super().__init__(max_t)
+    def __init__(self, sigma: float, *args, **kwargs):
         self.sigma = sigma
 
-    def __call__(self, t: Tensor) -> Tensor:
+    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
         log_sigma = torch.log(torch.tensor(
             self.sigma, dtype=torch.float32, device=t.device))
         return torch.sqrt(0.5 * (self.sigma ** (2 * t) - 1.0) / log_sigma)
 
+    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+        pass
+
     def config(self) -> dict:
         return {
-            "max_t": self.max_t,
             "sigma": self.sigma
         }
 
@@ -25,23 +26,25 @@ class VarianceExplodingSchedule(BaseNoiseSchedule):
 class VarianceExploding(BaseDiffusion):
     NEEDS_NOISE_SCHEDULE = False
 
-    def __init__(self, max_t: Optional[int] = 1000.0, sigma: Optional[float] = 25.0):
-        self.schedule = VarianceExplodingSchedule(max_t=max_t, sigma=sigma)
-        self.max_t = max_t
+    def __init__(self, *args, sigma: float = 25.0, **kwargs):
+        super().__init__(VarianceExplodingSchedule(sigma))
 
-    def forward_sde(self, x: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward_sde(self, x: Tensor, t: Tensor, *args, **kwargs) -> Tuple[Tensor, Tensor]:
         drift = torch.zeros_like(x)
         diffusion = (self.schedule.sigma ** t).view(-1, 1, 1, 1)
         return drift, diffusion
 
-    def forward_process(self, x0: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-        sigma_t = self.schedule(t)
+    def forward_process(self, x0: Tensor, t: Tensor, *args, **kwargs) -> Tuple[Tensor, Tensor]:
+        sigma_t = self.schedule(t, *args, **kwargs)
         sigma = sigma_t.view(x0.shape[0], *([1] * (x0.dim() - 1)))
         noise = torch.randn_like(x0)
         return x0 + sigma * noise, noise
 
+    def compute_loss(self, score: Tensor, noise: Tensor, t: Tensor, *args, **kwargs) -> Tensor:
+        sigma_t = self.schedule(t, *args, **kwargs)
+        sigma_t = sigma_t.view(score.shape[0], *([1] * (score.dim() - 1)))
+        loss = (sigma_t * score + noise) ** 2
+        return loss.sum(dim=tuple(range(1, loss.dim())))
+
     def config(self) -> dict:
-        return {
-            "max_t": self.max_t,
-            "sigma": self.schedule.sigma,
-        }
+        return self.schedule.config()

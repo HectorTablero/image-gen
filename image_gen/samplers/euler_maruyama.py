@@ -10,11 +10,13 @@ class EulerMaruyama(BaseSampler):
         self,
         x_T: Tensor,
         score_model: Callable,
+        *args,
         n_steps: int = 500,
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
-        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None
+        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None,
+        **kwargs
     ) -> Tensor:
 
         if seed is not None:

@@ -3,7 +3,7 @@ from torch import Tensor
 
 
 class FrechetInceptionDistance(BaseMetric):
-    def __call__(self, real: Tensor, generated: Tensor) -> float:
+    def __call__(self, real: Tensor, generated: Tensor, *args, **kwargs) -> float:
         pass
 
     @property

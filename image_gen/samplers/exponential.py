@@ -36,11 +36,13 @@ class ExponentialIntegrator(BaseSampler):
         self,
         x_T: Tensor,
         score_model: Callable,
+        *args,
         n_steps: int = 500,
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
-        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None
+        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None,
+        **kwargs
     ) -> Tensor:
 
         if seed is not None:
@@ -97,7 +99,8 @@ class ExponentialIntegrator(BaseSampler):
             exp_term = torch.exp(exp_dt)
 
             # Apply exponential update
-            x_t = x_t * exp_term + diffusion * torch.sqrt(torch.abs(dt)) * noise
+            x_t = x_t * exp_term + diffusion * \
+                torch.sqrt(torch.abs(dt)) * noise
 
             if guidance is not None:
                 x_t = guidance(x_t, t_curr)

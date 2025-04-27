@@ -4,7 +4,7 @@ from torch import Tensor
 
 class BaseMetric(ABC):
     @abstractmethod
-    def __call__(self, real: Tensor, generated: Tensor) -> float:
+    def __call__(self, real: Tensor, generated: Tensor, *args, **kwargs) -> float:
         ...
 
     @property

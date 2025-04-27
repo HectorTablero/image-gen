@@ -5,7 +5,7 @@ from torch import Tensor
 
 
 class BaseSampler(ABC):
-    def __init__(self, diffusion, verbose: bool = True):
+    def __init__(self, diffusion, *args, verbose: bool = True, **kwargs):
         self.diffusion = diffusion
         self.verbose = verbose
 
@@ -13,12 +13,14 @@ class BaseSampler(ABC):
     def __call__(self,
                  x_T: Tensor,
                  score_model: Callable,
+                 *args,
                  n_steps: int = 500,
                  seed: Optional[int] = None,
                  callback: Optional[Callable[[Tensor, int], None]] = None,
                  callback_frequency: int = 50,
                  guidance: Optional[Callable[[
-                     Tensor, Tensor, Tensor], Tensor]] = None
+                     Tensor, Tensor, Tensor], Tensor]] = None,
+                 **kwargs
                  ) -> Tuple[Tensor, Tensor]:
         ...
 

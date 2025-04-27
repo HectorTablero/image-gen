@@ -4,16 +4,20 @@ from typing import Optional
 
 
 class BaseNoiseSchedule(ABC):
-    def __init__(self, max_t: Optional[float] = 500.0):
-        self.max_t = max_t
-
     @abstractmethod
-    def __call__(self, t: Tensor) -> Tensor:
+    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
         ...
 
     @abstractmethod
     def config(self) -> dict:
         pass
+
+    @abstractmethod
+    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+        ...
+
+    def config(self) -> dict:
+        return {}
 
     def __str__(self) -> str:
         config = self.config()

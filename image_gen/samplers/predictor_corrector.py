@@ -15,7 +15,7 @@ from tqdm.autonotebook import tqdm
 
 
 class PredictorCorrector(BaseSampler):
-    def __init__(self, diffusion, verbose=False, corrector_steps=1, corrector_snr=0.15):
+    def __init__(self, diffusion, *args, verbose=False, corrector_steps=1, corrector_snr=0.15, **kwargs):
         """
         Inicializa el sampler de Predictor-Corrector.
 
@@ -34,7 +34,9 @@ class PredictorCorrector(BaseSampler):
         x_t: Tensor,
         t_curr: Tensor,
         t_next: Tensor,
-        score: Tensor
+        score: Tensor,
+        *args,
+        **kwargs
     ) -> Tensor:
         """
         Realiza un paso de predictor (similar a Euler-Maruyama).
@@ -56,7 +58,9 @@ class PredictorCorrector(BaseSampler):
         self,
         x_t: Tensor,
         t: Tensor,
-        score_model: Callable
+        score_model: Callable,
+        *args,
+        **kwargs
     ) -> Tensor:
         """
         Realiza un paso de corrector (basado en Langevin dynamics).
@@ -104,11 +108,13 @@ class PredictorCorrector(BaseSampler):
         self,
         x_T: Tensor,
         score_model: Callable,
+        *args,
         n_steps: int = 500,
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
-        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None
+        guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None,
+        **kwargs
     ) -> Tensor:
 
         if seed is not None:
