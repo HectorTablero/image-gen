@@ -3,10 +3,11 @@ from torch import Tensor
 
 
 class LinearNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, max_t: float = 1000.0, beta_min: float = 0.1, beta_max: float = 20.0):
+    def __init__(self, max_t: float = 1.0, beta_min: float = 0.0001, beta_max: float = 20.):
         super().__init__(max_t)
         self.beta_min = beta_min
         self.beta_max = beta_max
+        print(f"LinearNoiseSchedule: max_t={max_t}, beta_min={beta_min}, beta_max={beta_max}")
 
     def __call__(self, t: Tensor) -> Tensor:
         t_norm = (t / self.max_t).clamp(0.0, 1.0)
