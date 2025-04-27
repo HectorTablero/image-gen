@@ -45,7 +45,8 @@ class PredictorCorrector(BaseSampler):
         dt = (t_curr - t_next).view(-1, 1, 1, 1)
 
         # Obtenemos drift y diffusion
-        drift, diffusion = self.diffusion.backward_sde(x_t, t_curr, score)
+        drift, diffusion = self.diffusion.backward_sde(
+            x_t, t_curr, score, *args, **kwargs)
         diffusion = torch.nan_to_num(diffusion, nan=1e-4)
         noise = torch.randn_like(x_t)
 
@@ -162,13 +163,15 @@ class PredictorCorrector(BaseSampler):
                 x_t.requires_grad_(False)
 
             # Aplicamos el paso predictor
-            x_t = self.predictor_step(x_t, t_batch, t_next_batch, score)
+            x_t = self.predictor_step(
+                x_t, t_batch, t_next_batch, score, n_steps=n_steps)
 
             # Paso 2: Corrector (Langevin MCMC)
             # Aseguramos que el paso corrector maneje correctamente los class labels
             try:
                 for j in range(self.corrector_steps):
-                    x_t = self.corrector_step(x_t, t_next_batch, score_model)
+                    x_t = self.corrector_step(
+                        x_t, t_next_batch, score_model, n_steps=n_steps)
             except Exception as e:
                 if self.verbose:
                     print(
