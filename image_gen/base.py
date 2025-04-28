@@ -28,6 +28,7 @@ class GenerativeModel:
     }
     SAMPLER_MAP = {
         "euler-maruyama": EulerMaruyama,
+        "euler": EulerMaruyama,
         "em": EulerMaruyama,
         "exponential": ExponentialIntegrator,
         "exp": ExponentialIntegrator,
@@ -40,7 +41,7 @@ class GenerativeModel:
                  diffusion: Optional[Union[BaseDiffusion, type,
                                            Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
                  sampler: Optional[Union[BaseSampler, type,
-                                         Literal["euler-maruyama", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
+                                         Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
                  noise_schedule: Optional[Union[BaseNoiseSchedule,
                                                 type, Literal["linear", "lin", "cosine", "cos"]]] = None,
                  verbose: bool = True) -> None:
@@ -391,7 +392,7 @@ class GenerativeModel:
 
                 enforced_rgb = self._yuv_to_rgb(yuv)
 
-                alpha = t.item() / self.diffusion.schedule.max_t
+                alpha = t.item() / n_steps
                 return enforced_rgb * (1 - alpha) + x_t * alpha
 
         score_func = self.class_conditional_score(class_labels, x.shape[0])
@@ -558,11 +559,10 @@ class GenerativeModel:
         self.sampler = sampler_cls(self.diffusion, verbose=self.verbose)
 
     def load(self, path: str):
-        # TODO: Version-based model loading
-
         self.model = None
 
         checkpoint = torch.load(path)
+        self._version = checkpoint.get('model_version')
 
         self._rebuild_diffusion(checkpoint)
         self._rebuild_sampler(checkpoint)
@@ -571,7 +571,6 @@ class GenerativeModel:
         self.num_classes = len(
             self.stored_labels) if self.stored_labels is not None else None
         self._label_map = checkpoint.get('label_map')
-        self._version = checkpoint.get('model_version')
 
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to grayscale

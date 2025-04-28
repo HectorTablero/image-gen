@@ -122,7 +122,7 @@ def create_evolution_widget(model: GenerativeModel, figsize: Tuple[int, int] = (
     return anim
 
 
-def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **kwargs):
+def display_images(images: torch.Tensor, *args, figsize: Tuple[int, int] = (6, 6), **kwargs):
     """
     Displays a grid of generated images.
 
@@ -140,8 +140,12 @@ def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **k
     images = (images + 1) / 2  # Scale from [-1,1] to [0,1]
     images = np.clip(images, 0, 1)  # Ensure values remain in [0,1]
 
-    fig, axes = plt.subplots(row_size, num_rows, figsize=figsize)
-    axes = axes.flatten()
+    if num_images == 1:
+        fig, ax = plt.subplots(figsize=figsize)
+        axes = [ax]
+    else:
+        fig, axes = plt.subplots(row_size, num_rows, figsize=figsize)
+        axes = axes.flatten()
 
     for idx, img in enumerate(images):
         if num_channels == 1:
@@ -152,3 +156,6 @@ def display_images(images: Tensor, *args, figsize: Tuple[int, int] = (6, 6), **k
 
     for idx in range(num_images, len(axes)):
         axes[idx].axis('off')
+
+    plt.tight_layout()
+    plt.show()
