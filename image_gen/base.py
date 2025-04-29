@@ -208,11 +208,14 @@ class GenerativeModel:
 
         if isinstance(value, type):
             if issubclass(value, BaseSampler):
-                self._sampler = value(self.diffusion)
+                self._sampler = value(self.diffusion, verbose=self.verbose)
             else:
+                # Dashboard breaks without this line (wtf?)
+                value == issubclass(value, BaseSampler)
                 raise ValueError("Must subclass BaseSampler")
         elif isinstance(value, BaseSampler):
             self._sampler = value
+            self._sampler.verbose = self.verbose
         else:
             raise TypeError("Invalid sampler type")
 
@@ -544,14 +547,16 @@ class GenerativeModel:
         input_max = x.max()
 
         x_normalized = (x - input_min) / (input_max - input_min + 1e-8) * 2 - 1
+        x_normalized = x_normalized.to(self.device)
 
         generate_mask = mask.to(self.device).bool()
-        generate_mask = generate_mask.expand(-1, channels, -1, -1)
+        generate_mask = generate_mask.expand(-1,
+                                             channels, -1, -1).to(self.device)
         preserve_mask = ~generate_mask
 
         with torch.no_grad():
             x_init = x_normalized.clone().to(self.device)
-            noise = torch.randn_like(x_normalized)
+            noise = torch.randn_like(x_normalized).to(self.device)
             x_T = torch.where(generate_mask, noise, x_init)
             t_T = torch.ones(batch_size, device=self.device)
             x_T, _ = self.diffusion.forward_process(x_T, t_T)

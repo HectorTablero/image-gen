@@ -1,5 +1,6 @@
 import toml
 from image_gen.base import GenerativeModel
+from image_gen.samplers import EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
 import streamlit as st
 import torch
 import io
@@ -66,7 +67,7 @@ def model_selection():
             "Upload model checkpoint · Will be copied into the model directory", type=["pt", "pth"])
 
         if 'model_dir' not in st.session_state:
-            st.session_state.model_dir = "saved_models"
+            st.session_state.model_dir = "examples/saved_models"
 
         if uploaded_file is not None:
             try:
@@ -128,6 +129,7 @@ def model_selection():
                     st.session_state.model = model
                     st.session_state.model_name = ".".join(
                         selected_model.split(".")[:-1])
+                    st.session_state.previous_sampler = None
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error loading model: {str(e)}")
@@ -144,9 +146,45 @@ def model_selection():
     with col2:
         st.header("Model Information")
         if st.session_state.model is not None:
+            sampler_options = {
+                "Euler-Maruyama": "em",
+                "Exponential Integrator": "exp",
+                "ODE Probability Flow": "ode",
+                "Predictor-Corrector": "pred"
+            }
+
+            sampler_classes = [
+                "EulerMaruyama", "ExponentialIntegrator", "ODEProbabilityFlow", "PredictorCorrector"]
+
+            current_sampler = st.session_state.model.sampler.__class__.__name__
+
+            # Create select box with current sampler as default
+            selected_sampler = st.selectbox(
+                "Sampler Type",
+                options=list(sampler_options.keys()),
+                index=sampler_classes.index(current_sampler)
+                if current_sampler in sampler_classes else 0,
+                key="sampler_select"
+            )
+
+            # Automatically update sampler when selection changes
+            if st.session_state.get("previous_sampler") != selected_sampler:
+                try:
+                    # Get selected sampler class
+                    sampler_cls = sampler_options[selected_sampler]
+
+                    # Reinitialize sampler with model's diffusion
+                    st.session_state.model.sampler = sampler_cls
+                    if st.session_state.previous_sampler is not None:
+                        st.toast(
+                            f"Sampler changed to {selected_sampler}", icon="🔄")
+                    st.session_state.previous_sampler = selected_sampler
+                except Exception as e:
+                    st.error(f"Failed to change sampler: {str(e)}")
+
             info = {
                 "Model Name": st.session_state.model_name,
-                "Number of Channels": st.session_state.model.num_c,
+                "Number of Channels": st.session_state.model.num_channels,
                 "Input Shape": st.session_state.model.shape,
                 "Sampler Type": type(st.session_state.model.sampler).__name__,
                 "Diffusion Type": {
@@ -154,6 +192,7 @@ def model_selection():
                         st.session_state.model.diffusion).__name__: st.session_state.model.diffusion.config()
                 }
             }
+
             if st.session_state.model.diffusion.NEEDS_NOISE_SCHEDULE:
                 info["Noise Schedule"] = {
                     type(
@@ -217,9 +256,9 @@ def generation():
                         st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
                 )
                 class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                st.session_state.settings["class_id"] = selected_class
             else:
                 class_id = None
-            st.session_state.settings["class_id"] = selected_class
 
     # brush / graient / auto_awesome
     if st.button("Generate Images", icon=":material/auto_awesome:"):
@@ -656,10 +695,14 @@ def main():
     # Initialize session state
     if 'model' not in st.session_state:
         st.session_state.model = None
+    else:
+        if st.session_state.model._label_map is None and len(st.session_state.model.stored_labels) > 1:
+            st.session_state.model.set_labels(
+                st.session_state.model.stored_labels)
     if 'model_name' not in st.session_state:
         st.session_state.model_name = None
     if 'model_dir' not in st.session_state:
-        st.session_state.model_dir = "saved_models/examples"
+        st.session_state.model_dir = "examples/saved_models"
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
     if 'settings' not in st.session_state:
