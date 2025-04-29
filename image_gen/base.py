@@ -45,8 +45,8 @@ class GenerativeModel:
                  noise_schedule: Optional[Union[BaseNoiseSchedule,
                                                 type, Literal["linear", "lin", "cosine", "cos"]]] = None,
                  verbose: bool = True) -> None:
-        self.model = None
-        self.verbose = verbose
+        self._model = None
+        self._verbose = verbose
 
         if diffusion is None:
             diffusion = "ve"
@@ -107,39 +107,129 @@ class GenerativeModel:
             self.sampler = sampler
         self.sampler.verbose = verbose
 
-        self.stored_labels = None
+        self._stored_labels = None
         self._label_map = None
         self._version = MODEL_VERSION
 
+        self._num_channels = None
+        self._input_shape = None
+
     @property
     def device(self) -> torch.device:
-        """Dynamic device property based on model parameters."""
-        if self.model is not None:
-            return next(self.model.parameters()).device
+        if self._model is not None:
+            return next(self._model.parameters()).device
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @property
     def version(self) -> int:
-        """Model version."""
         return self._version
 
     @property
+    def num_channels(self) -> int:
+        """Number of input channels (read-only)."""
+        return self._num_channels if self._num_channels is not None else 0
+
+    @property
+    def shape(self) -> Tuple[int, int]:
+        """Spatial dimensions of the input (height, width) (read-only)."""
+        return self._shape if self._shape is not None else (0, 0)
+
+    @property
+    def stored_labels(self) -> Tuple[Any, ...]:
+        """Numeric class labels from training data (read-only)."""
+        return tuple(self._stored_labels) if self._stored_labels is not None else ()
+
+    @property
+    def num_classes(self) -> Optional[int]:
+        """Number of classes (read-only). None if not class-conditional."""
+        return self._num_classes
+
+    @property
     def labels(self) -> List[str]:
-        """Stored labels."""
         return self._label_map if self._label_map is not None else []
 
+    @property
+    def model(self) -> Optional[ScoreNet]:
+        """The underlying score model (read-only)."""
+        return self._model
+
+    @property
+    def verbose(self) -> bool:
+        return self._verbose
+
+    @property
+    def noise_schedule(self) -> BaseNoiseSchedule:
+        return self.diffusion.schedule if hasattr(self.diffusion, 'schedule') else None
+
+    @verbose.setter
+    def verbose(self, value: bool):
+        self._verbose = value
+        if hasattr(self.sampler, 'verbose'):
+            self.sampler.verbose = value
+
+    @property
+    def diffusion(self) -> BaseDiffusion:
+        """The diffusion process (read-only after training)"""
+        return self._diffusion
+
+    @diffusion.setter
+    def diffusion(self, value: Union[BaseDiffusion, type, str]):
+        if self._model is not None:
+            warnings.warn(
+                "Diffusion cannot be changed after training", UserWarning)
+            return
+
+        if isinstance(value, str):
+            value = self.DIFFUSION_MAP.get(value.lower(), VarianceExploding)
+
+        if isinstance(value, type):
+            if issubclass(value, BaseDiffusion):
+                if value.NEEDS_NOISE_SCHEDULE:
+                    ns = LinearNoiseSchedule()
+                    self._diffusion = value(ns)
+                else:
+                    self._diffusion = value()
+            else:
+                raise ValueError("Must subclass BaseDiffusion")
+        elif isinstance(value, BaseDiffusion):
+            self._diffusion = value
+        else:
+            raise TypeError("Invalid diffusion type")
+
+    @property
+    def sampler(self) -> BaseSampler:
+        """The sampling algorithm (always settable)"""
+        return self._sampler
+
+    @sampler.setter
+    def sampler(self, value: Union[BaseSampler, type, str]):
+        if isinstance(value, str):
+            value = self.SAMPLER_MAP.get(value.lower(), EulerMaruyama)
+
+        if isinstance(value, type):
+            if issubclass(value, BaseSampler):
+                self._sampler = value(self.diffusion)
+            else:
+                raise ValueError("Must subclass BaseSampler")
+        elif isinstance(value, BaseSampler):
+            self._sampler = value
+        else:
+            raise TypeError("Invalid sampler type")
+
+        self._sampler.verbose = self.verbose
+
     def _progress(self, iterable: Iterable, **kwargs: Dict[str, Any]) -> Iterable:
-        return tqdm(iterable, **kwargs) if self.verbose else iterable
+        return tqdm(iterable, **kwargs) if self._verbose else iterable
 
     def _build_default_model(self, shape: Tuple[int, int, int] = (3, 32, 32)):
         device = self.device  # Creating the ScoreNet changes the device, so this line is necessary
-        self.num_channels = shape[0]
-        self.shape = (shape[1], shape[2])
-        self.model = ScoreNet(
+        self._num_channels = shape[0]
+        self._shape = (shape[1], shape[2])
+        self._model = ScoreNet(
             marginal_prob_std=self.diffusion.schedule, num_c=shape[0], num_classes=self.num_classes)
         if self.device.type == "cuda":
-            self.model = torch.nn.DataParallel(self.model)
-        self.model = self.model.to(device)
+            self._model = torch.nn.DataParallel(self.model)
+        self._model = self.model.to(device)
 
     def loss_function(self, x0: torch.Tensor, eps: float = 1e-5, class_labels: Optional[Tensor] = None) -> torch.Tensor:
         t = torch.rand(x0.shape[0], device=x0.device) * (1.0 - eps) + eps
@@ -168,13 +258,13 @@ class GenerativeModel:
                 for _, label in dataset
             ]
             all_labels_tensor = torch.cat([lbl.view(-1) for lbl in all_labels])
-            self.stored_labels = sorted(all_labels_tensor.unique().tolist())
+            self._stored_labels = sorted(all_labels_tensor.unique().tolist())
 
             # Crear mapeo de labels originales a índices 0-based
             self._label_to_index = {
                 lbl: idx for idx, lbl in enumerate(self.stored_labels)
             }
-            self.num_classes = len(self.stored_labels)
+            self._num_classes = len(self.stored_labels)
 
             # Mapear todas las etiquetas a índices
             self._mapped_labels = torch.tensor([
@@ -182,7 +272,7 @@ class GenerativeModel:
                 for lbl in all_labels_tensor
             ])
         else:
-            self.num_classes = None
+            self._num_classes = None
 
         first = first[0] if isinstance(first, (list, tuple)) else first
         self._build_default_model(shape=first.shape)
@@ -321,6 +411,7 @@ class GenerativeModel:
                  n_steps: int = 500,
                  seed: Optional[int] = None,
                  class_labels: Optional[Union[int, Tensor]] = None,
+                 guidance_scale: float = 3.0,
                  progress_callback: Optional[Callable[[
                      Tensor, int], None]] = None,
                  callback_frequency: int = 50
@@ -329,7 +420,8 @@ class GenerativeModel:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
 
-        score_func = self.class_conditional_score(class_labels, num_samples)
+        score_func = self.class_conditional_score(
+            class_labels, num_samples, guidance_scale=guidance_scale)
 
         x_T = torch.randn(num_samples, self.num_channels, *
                           self.shape, device=self.device)
@@ -531,9 +623,9 @@ class GenerativeModel:
         config = checkpoint.get('diffusion_config', {})
 
         if diffusion_cls.NEEDS_NOISE_SCHEDULE:
-            self.diffusion = diffusion_cls(schedule, **config)
+            self._diffusion = diffusion_cls(schedule, **config)
         else:
-            self.diffusion = diffusion_cls(**config)
+            self._diffusion = diffusion_cls(**config)
 
     def _rebuild_noise_schedule(self, checkpoint: Dict[str, Any]) -> BaseNoiseSchedule:
         schedule_map = {
@@ -556,25 +648,30 @@ class GenerativeModel:
 
         sampler_type = checkpoint.get('sampler_type', 'euler-maruyama')
         sampler_cls = sampler_map[sampler_type]
-        self.sampler = sampler_cls(self.diffusion, verbose=self.verbose)
+        if self.sampler.__class__ != sampler_cls:
+            warnings.warn(
+                f"The model was initialized with sampler {self.sampler.__class__.__name__}, but the saved model has {sampler_cls.__name__}. The sampler will be set to {sampler_cls.__name__}. If you don't want this behaviour, use model.load(path, override = False)."
+            )
+        self._sampler = sampler_cls(self.diffusion, verbose=self._verbose)
 
-    def load(self, path: str):
-        self.model = None
+    def load(self, path: str, override: bool = True):
+        self._model = None
 
         checkpoint = torch.load(path)
         self._version = checkpoint.get('model_version')
 
         self._rebuild_diffusion(checkpoint)
-        self._rebuild_sampler(checkpoint)
+        if override:
+            self._rebuild_sampler(checkpoint)
 
-        self.stored_labels = checkpoint.get('stored_labels')
-        self.num_classes = len(
+        self._stored_labels = checkpoint.get('stored_labels')
+        self._num_classes = len(
             self.stored_labels) if self.stored_labels is not None else None
         self._label_map = checkpoint.get('label_map')
 
         checkpoint_channels = checkpoint.get(
             'num_channels', 1)  # Default to grayscale
-        self.shape = checkpoint.get('shape', (32, 32))
+        self._shape = checkpoint.get('shape', (32, 32))
 
         self._build_default_model(shape=(checkpoint_channels, *self.shape))
 

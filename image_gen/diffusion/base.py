@@ -30,6 +30,18 @@ class BaseDiffusion(ABC):
 
         return f - g_squared * score, g
 
+    @property
+    def schedule(self) -> BaseNoiseSchedule:
+        return self._schedule
+
+    @schedule.setter
+    def schedule(self, value: BaseNoiseSchedule):
+        # Schedule shouldn't be allowed to change once the class is initialized
+        if not hasattr(self, '_schedule'):
+            self._schedule = value
+            return
+        raise AttributeError("Attribute 'schedule' is not settable")
+
     def config(self) -> dict:
         return {}
 
