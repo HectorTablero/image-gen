@@ -38,15 +38,21 @@ class GenerativeModel:
     }
 
     def __init__(self,
-                 diffusion: Optional[Union[BaseDiffusion, type,
-                                           Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
-                 sampler: Optional[Union[BaseSampler, type,
-                                         Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
-                 noise_schedule: Optional[Union[BaseNoiseSchedule,
+                diffusion: Optional[Union[BaseDiffusion, type,
+                                        Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
+                sampler: Optional[Union[BaseSampler, type,
+                                        Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
+                noise_schedule: Optional[Union[BaseNoiseSchedule,
                                                 type, Literal["linear", "lin", "cosine", "cos"]]] = None,
-                 verbose: bool = True) -> None:
+                verbose: bool = True) -> None:
         self._model = None
         self._verbose = verbose
+        self._num_classes = None  # Initialize this attribute
+        self._stored_labels = None
+        self._label_map = None
+        self._version = MODEL_VERSION
+        self._num_channels = None
+        self._shape = None  # Changed from _input_shape to _shape
 
         if diffusion is None:
             diffusion = "ve"
@@ -222,6 +228,7 @@ class GenerativeModel:
         self._sampler.verbose = self.verbose
 
     def _progress(self, iterable: Iterable, **kwargs: Dict[str, Any]) -> Iterable:
+        """Wrap with tqdm only if verbose is enabled"""
         return tqdm(iterable, **kwargs) if self._verbose else iterable
 
     def _build_default_model(self, shape: Tuple[int, int, int] = (3, 32, 32)):

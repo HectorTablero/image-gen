@@ -13,7 +13,6 @@ from torch import Tensor
 from typing import Callable, Optional, Tuple, List, Union
 from tqdm.autonotebook import tqdm
 
-
 class PredictorCorrector(BaseSampler):
     def __init__(self, diffusion, *args, verbose=False, corrector_steps=1, corrector_snr=0.15, **kwargs):
         """
@@ -147,20 +146,14 @@ class PredictorCorrector(BaseSampler):
 
             # Paso 1: Predictor
             try:
-                with torch.enable_grad():
-                    x_t.requires_grad_(True)
-                    score = score_model(x_t, t_batch)
-                    x_t.requires_grad_(False)
-
-                if torch.isnan(score).any():
-                    if self.verbose:
-                        print(
-                            f"Warning: NaN values in score at step {i}, t={t_curr}")
-                    score = torch.nan_to_num(score, nan=0.0)
+                # Create a fresh detached copy for gradient computation
+                x_t_detached = x_t.detach().clone()
+                x_t_detached.requires_grad_(True)
+                score = score_model(x_t_detached, t_batch)
+                
             except Exception as e:
                 print(f"Error computing score at step {i}, t={t_curr}: {e}")
                 score = torch.zeros_like(x_t)
-                x_t.requires_grad_(False)
 
             # Aplicamos el paso predictor
             x_t = self.predictor_step(

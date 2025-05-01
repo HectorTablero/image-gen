@@ -45,20 +45,14 @@ class EulerMaruyama(BaseSampler):
                 x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
 
             try:
-                with torch.enable_grad():
-                    x_t.requires_grad_(True)
-                    score = score_model(x_t, t_for_score)
-                    x_t.requires_grad_(False)
+                # Create a fresh detached copy for gradient computation
+                x_t_detached = x_t.detach().clone()
+                x_t_detached.requires_grad_(True)
+                score = score_model(x_t_detached, t_for_score)
 
-                if torch.isnan(score).any():
-                    if self.verbose:
-                        print(
-                            f"Warning: NaN values in score at step {i}, t={t_curr}")
-                    score = torch.nan_to_num(score, nan=0.0)
             except Exception as e:
                 print(f"Error computing score at step {i}, t={t_curr}: {e}")
                 score = torch.zeros_like(x_t)
-                x_t.requires_grad_(False)
 
             drift, diffusion = self.diffusion.backward_sde(
                 x_t, t_batch, score, n_steps=n_steps)

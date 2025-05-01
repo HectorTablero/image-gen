@@ -45,19 +45,15 @@ class ExponentialIntegrator(BaseSampler):
             if torch.isnan(x_t).any() or torch.isinf(x_t).any():
                 x_t = torch.nan_to_num(x_t, nan=0.0, posinf=1.0, neginf=-1.0)
 
-            # Compute score using the score model
             try:
-                with torch.enable_grad():
-                    x_t.requires_grad_(True)
-                    score = score_model(x_t, t_batch)
-                    x_t.requires_grad_(False)
-
-                if torch.isnan(score).any():
-                    score = torch.nan_to_num(score, nan=0.0)
+                # Create a fresh detached copy for gradient computation
+                x_t_detached = x_t.detach().clone()
+                x_t_detached.requires_grad_(True)
+                score = score_model(x_t_detached, t_batch)
+            
             except Exception as e:
                 print(f"Error computing score at step {i}, t={t_curr}: {e}")
                 score = torch.zeros_like(x_t)
-                x_t.requires_grad_(False)
 
             # Get drift and diffusion from the backward SDE (g is diffusion coefficient)
             drift, diffusion = self.diffusion.backward_sde(
