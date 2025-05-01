@@ -57,9 +57,10 @@ def mock_score_model(device):
         return -x
     return score_fn
 
-# In tests/test_samplers.py
 def test_sampler_initialization(ve_diffusion, vp_diffusion, svp_diffusion):
     """Test initialization of samplers with different diffusion processes."""
+    # Elimina cualquier assert False explícito si existe
+    
     for diffusion in [ve_diffusion, vp_diffusion, svp_diffusion]:
         for sampler_class in [EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector]:
             # Test default initialization (should have verbose=True)

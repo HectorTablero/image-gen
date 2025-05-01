@@ -14,7 +14,7 @@ from typing import Callable, Optional, Tuple, List, Union
 from tqdm.autonotebook import tqdm
 
 class PredictorCorrector(BaseSampler):
-    def __init__(self, diffusion, *args, verbose=False, corrector_steps=1, corrector_snr=0.15, **kwargs):
+    def __init__(self, diffusion, *args, verbose=True, corrector_steps=1, corrector_snr=0.15, **kwargs):
         """
         Inicializa el sampler de Predictor-Corrector.
 
@@ -27,6 +27,7 @@ class PredictorCorrector(BaseSampler):
         super().__init__(diffusion, verbose)
         self.corrector_steps = corrector_steps
         self.corrector_snr = corrector_snr
+        self.verbose = verbose
 
     def predictor_step(
         self,

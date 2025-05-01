@@ -324,9 +324,9 @@ class GenerativeModel:
 
                 avg_loss += loss.item() * x0.shape[0]
                 num_items += x0.shape[0]
-                batch_bar.set_postfix(loss=loss.item())
+                # batch_bar.set_postfix(loss=loss.item())
 
-            epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
+            # epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
 
     def set_labels(self, labels: List[str]):
         # Check if model has class conditioning
@@ -688,25 +688,20 @@ class GenerativeModel:
         self._build_default_model(shape=(checkpoint_channels, *self.shape))
 
         try:
-            self.model.load_state_dict(checkpoint['model_state'])
+            # Cargar solo las claves que existen en ambos modelos
+            model_dict = self.model.state_dict()
+            # Filtrar las claves del checkpoint que existen en el modelo actual
+            pretrained_dict = {k: v for k, v in checkpoint['model_state'].items() if k in model_dict}
+            model_dict.update(pretrained_dict)
+            self.model.load_state_dict(model_dict, strict=False)
         except RuntimeError as e:
             try:
+                # Intentar con las claves sin "module."
                 new_state_dict = {
                     k.replace('module.', ''): v for k, v in checkpoint['model_state'].items()}
-                self.model.load_state_dict(new_state_dict)
+                model_dict = self.model.state_dict()
+                pretrained_dict = {k: v for k, v in new_state_dict.items() if k in model_dict}
+                model_dict.update(pretrained_dict)
+                self.model.load_state_dict(model_dict, strict=False)
             except RuntimeError as e2:
                 print(f"Warning: Failed to load model state with error: {e}")
-
-    def __str__(self) -> str:
-        components = [
-            f"Input shape: {getattr(self, 'shape', 'Not initialized')}",
-            f"Channels: {getattr(self, 'num_channels', 'Not initialized')}",
-            f"Diffusion: {str(self.diffusion) if hasattr(self, 'diffusion') else 'None'}",
-            f"Sampler: {str(self.sampler) if hasattr(self, 'sampler') else 'None'}"
-        ]
-
-        if hasattr(self, 'diffusion') and self.diffusion.NEEDS_NOISE_SCHEDULE:
-            components.insert(
-                3, f"Noise Schedule: {str(self.diffusion.schedule)}")
-
-        return "GenerativeModel(\n    " + "\n    ".join(components) + "\n)"
