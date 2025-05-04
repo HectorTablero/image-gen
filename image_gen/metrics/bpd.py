@@ -1,35 +1,47 @@
-from .base import BaseMetric
-from torch import Tensor
-import torch
+"""Module for Bits Per Dimension metric implementation."""
+
 import numpy as np
-from torch.utils.data import DataLoader
 from typing import Union
+
+import torch
+from torch import Tensor
+from torch.utils.data import DataLoader
+
+from .base import BaseMetric
 
 
 class BitsPerDimension(BaseMetric):
-    """
-    Bits per dimension (BPD) metric for evaluating density models.
-    Lower values indicate better models.
+    """Bits per dimension (BPD) metric for evaluating density models.
+
+    This metric evaluates probabilistic generative models based on their
+    log-likelihood. Lower values indicate better models.
+
+    Attributes:
+        model: The generative model being evaluated.
     """
 
-    def __call__(self, real: Union[Tensor, torch.utils.data.Dataset], _, *args, **kwargs) -> float:
-        """
-        Computes bits per dimension for the real data.
+    def __call__(
+        self,
+        real: Union[Tensor, torch.utils.data.Dataset],
+        _,
+        *args,
+        **kwargs
+    ) -> float:
+        """Computes bits per dimension for the real data.
 
         Args:
-            real: Tensor or Dataset-like (Dataset, Subset, etc.)
-            generated: Not used for BPD, included for API compatibility
+            real: Tensor or Dataset-like object (Dataset, Subset, etc.)
+            _: Not used for BPD, included for API compatibility
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
 
         Returns:
-            BPD value (lower is better)
+            float: The computed BPD value (lower is better).
         """
-
         # If input is not a Tensor, assume it's a Dataset-like and load it
         if not isinstance(real, Tensor):
             dataloader = DataLoader(real, batch_size=64, shuffle=False)
             real = next(iter(dataloader))[0]  # Get first batch only
-        else:
-            dataloader = None
 
         real = real.to(self.model.device)
 
@@ -41,7 +53,8 @@ class BitsPerDimension(BaseMetric):
         with torch.no_grad():
             # Sample multiple random times for more accurate estimate
             losses = []
-            for _ in range(10):  # Average over multiple time samples
+            # Average over multiple time samples
+            for _ in range(10):
                 loss = self.model.loss_function(real)
                 losses.append(loss.detach().cpu())
 
@@ -57,8 +70,18 @@ class BitsPerDimension(BaseMetric):
 
     @property
     def name(self) -> str:
+        """Get the name of the metric.
+
+        Returns:
+            str: The name of the metric.
+        """
         return "Bits Per Dimension"
 
     @property
     def is_lower_better(self) -> bool:
+        """Indicates whether a lower metric value is better.
+
+        Returns:
+            bool: True if lower values indicate better performance.
+        """
         return True

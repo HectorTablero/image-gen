@@ -1,0 +1,20 @@
+site_name: docs
+
+site_name: Diffusion-Based Image Generation
+site_description: Documentation for diffusion-based image generation models
+
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+
+nav:
+  - Main: index.md
+  - Diffusion: diffusion.md
+  - Noise Schedules: noise.md
+  - Samplers: samplers.md
+  - Metrics: metrics.md
+  - Others: others.md

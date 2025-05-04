@@ -1,6 +1,6 @@
 [project]
 name = "image-gen-htd-amg"
-version = "0.1.0"
+version = "0.3.0"
 authors = [
   { name="Héctor Tablero Díaz", email="hector.tablerodiaz@gmail.com" },
   { name="Álvaro Martínez Gamo", email="alva00003@gmail.com" },

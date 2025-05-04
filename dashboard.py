@@ -1,24 +1,46 @@
-import toml
+"""
+Interactive dashboard for generative models with capabilities for image generation,
+colorization, and imputation.
+
+This module provides a Streamlit-based UI to interact with generative models,
+offering visualization tools and user-friendly controls.
+"""
+
+# Standard library imports
+from image_gen.samplers import (EulerMaruyama, ExponentialIntegrator,
+                                ODEProbabilityFlow, PredictorCorrector)
 from image_gen.base import GenerativeModel
-from image_gen.samplers import EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
-import streamlit as st
-import torch
-import io
-from PIL import Image
-import os
-import time
-import numpy as np
 import base64
+import io
+import os
 import sys
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+# Third-party imports
+import numpy as np
+import streamlit as st
+import toml
+import torch
+from PIL import Image
+
+# Local application imports
 sys.path.append('./..')
 
-
-# TODO: Ask for confirmation before unsafe loading
-
+# Constants
 NONE_LABEL = "(unset)"
 
 
-def tensor_to_image(tensor):
+def tensor_to_image(tensor: torch.Tensor) -> Image.Image:
+    """
+    Convert a PyTorch tensor to a PIL Image.
+
+    Args:
+        tensor: PyTorch tensor representing an image.
+
+    Returns:
+        PIL Image converted from the tensor.
+    """
     tensor = tensor.detach().cpu()
 
     if tensor.dim() == 4:
@@ -38,33 +60,183 @@ def tensor_to_image(tensor):
 
 
 @st.cache_data
-def load_css():
+def load_css() -> str:
+    """
+    Load CSS styles from file.
+
+    Returns:
+        String containing CSS styles.
+    """
     with open("assets/styles.css", "r", encoding="utf-8") as f:
         return f.read()
 
 
-about = [
-    "This dashboard offers an interactive way to manage and utilize generative models for image generation, colorization, and imputation.",
+# Dashboard information text
+ABOUT = [
+    "This dashboard offers an interactive way to manage and utilize generative "
+    "models for image generation, colorization, and imputation.",
     "**Authors:** Álvaro Martínez Gamo, Héctor Tablero Díaz",
     "",
-    "_The python module and dashboard were made as a project for the subject Aprendizaje Automático 3 (Machine Learning 3) in the [Data Science and Engineering](https://www.uam.es/uam/en/ingenieria-datos) degree at the Autonomous University of Madrid._"
+    "_The python module and dashboard were made as a project for the subject "
+    "Aprendizaje Automático 3 (Machine Learning 3) in the "
+    "[Data Science and Engineering](https://www.uam.es/uam/en/ingenieria-datos) "
+    "degree at the Autonomous University of Madrid._"
 ]
 
 
-def add_additional_info():
-    # Icono de https://fonts.google.com/icons?icon.set=Material+Symbols&icon.style=Rounded
+def add_additional_info() -> None:
+    """Add dashboard information in an expandable section."""
+    # Icon from https://fonts.google.com/icons?icon.set=Material+Symbols&icon.style=Rounded
     with st.expander("Dashboard Information", icon=":material/info:"):
-        for i in about:
-            st.write(i)
+        for info_line in ABOUT:
+            st.write(info_line)
 
 
 def _get_class_name(obj: type) -> str:
+    """
+    Get the class name of an object.
+
+    Args:
+        obj: Object to get class name from.
+
+    Returns:
+        Class name as a string.
+    """
     if hasattr(obj, "_class_name"):
         return obj._class_name
     return obj.__class__.__name__
 
 
-def model_selection():
+def load_model_with_safety_check(model_path: str, display_name: str) -> Optional[GenerativeModel]:
+    """
+    Load a model with safety checks for custom classes.
+
+    Args:
+        model_path: Path to the model file.
+        display_name: Display name for the model (for UI).
+
+    Returns:
+        Loaded model or None if loading was canceled.
+    """
+    # First, check if the model contains custom classes without loading them
+    custom_classes = {}
+
+    try:
+        # Load the model state to examine it
+        state_dict = torch.load(model_path, map_location='cpu')
+
+        # Check diffusion type
+        if '_type' in state_dict.get('diffusion', {}):
+            diffusion_type = state_dict['diffusion']['_type']
+            if diffusion_type not in ['GaussianDiffusion', 'ImprovedDDPM']:
+                custom_classes['diffusion'] = {
+                    'name': diffusion_type,
+                    'code': state_dict['diffusion'].get('_code', 'Code not available')
+                }
+
+        # Check sampler type
+        if '_type' in state_dict.get('sampler', {}):
+            sampler_type = state_dict['sampler']['_type']
+            if sampler_type not in ['EulerMaruyama', 'ExponentialIntegrator',
+                                    'ODEProbabilityFlow', 'PredictorCorrector']:
+                custom_classes['sampler'] = {
+                    'name': sampler_type,
+                    'code': state_dict['sampler'].get('_code', 'Code not available')
+                }
+
+        # Check noise schedule type
+        if '_type' in state_dict.get('noise_schedule', {}):
+            schedule_type = state_dict['noise_schedule']['_type']
+            if schedule_type not in ['Linear', 'Cosine']:
+                custom_classes['noise_schedule'] = {
+                    'name': schedule_type,
+                    'code': state_dict['noise_schedule'].get('_code', 'Code not available')
+                }
+
+        # Check for other custom components
+        for key, value in state_dict.items():
+            if isinstance(value, dict) and '_type' in value:
+                if key not in ['diffusion', 'sampler', 'noise_schedule']:
+                    custom_classes[key] = {
+                        'name': value['_type'],
+                        'code': value.get('_code', 'Code not available')
+                    }
+
+    except Exception as e:
+        st.error(f"Error examining model file: {str(e)}")
+        return None
+
+    # If custom classes are found, show the safety dialog
+    if custom_classes:
+        # Show warning dialog
+        with st.dialog("⚠️ Custom Classes Detected", can_be_closed=False):
+            st.markdown("""
+            ## ⚠️ Security Warning
+
+            This model contains custom classes that could potentially execute harmful code 
+            when loaded. Please review the code below before proceeding.
+
+            **Never load models from untrusted sources without reviewing their code.**
+            """)
+
+            # Add accordions for each custom class
+            for class_type, class_info in custom_classes.items():
+                with st.expander(f"Custom {class_type.title()}: {class_info['name']}"):
+                    st.code(class_info['code'], language="python")
+
+            col1, col2 = st.columns([3, 1])
+
+            # Create a placeholder for the countdown button
+            load_btn_placeholder = col1.empty()
+
+            # Initialize countdown timer
+            countdown = 3
+
+            # Disable button for 3 seconds with countdown
+            for i in range(countdown, 0, -1):
+                load_btn_placeholder.button(
+                    f"Load Anyway ({i})",
+                    disabled=True,
+                    type="primary",
+                    use_container_width=True
+                )
+                time.sleep(1)
+
+            # Create the enabled button after countdown
+            load_confirmed = load_btn_placeholder.button(
+                "Load Anyway",
+                type="primary",
+                use_container_width=True
+            )
+
+            cancel = col2.button("Cancel", use_container_width=True)
+
+            if cancel:
+                st.rerun()
+                return None
+
+            if not load_confirmed:
+                # Button not clicked yet, keep dialog open
+                st.stop()
+
+    # If we reach here, either there are no custom classes or the user confirmed loading
+    try:
+        with st.spinner(f"Loading {display_name}..."):
+            model = GenerativeModel(verbose=False)
+            model.load(model_path, unsafe=True)
+            st.success(f"Model loaded successfully!")
+            return model
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        return None
+
+
+def model_selection() -> None:
+    """
+    Render the model management page.
+
+    Provides UI for loading, selecting, and displaying model information.
+    """
     st.title("Model Management")
 
     col1, col2 = st.columns(2)
@@ -72,7 +244,9 @@ def model_selection():
     with col1:
         st.header("Load Model")
         uploaded_file = st.file_uploader(
-            "Upload model checkpoint · Will be copied into the model directory", type=["pt", "pth"])
+            "Upload model checkpoint · Will be copied into the model directory",
+            type=["pt", "pth"]
+        )
 
         if 'model_dir' not in st.session_state:
             st.session_state.model_dir = "examples/saved_models"
@@ -87,27 +261,28 @@ def model_selection():
                     st.session_state[upload_key] = True
 
                     save_path = os.path.join(
-                        st.session_state.model_dir, uploaded_file.name)
+                        st.session_state.model_dir, uploaded_file.name
+                    )
 
                     # Save the file
                     with open(save_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
 
-                    # Verify and load the model
-                    with st.spinner(f"Loading {uploaded_file.name}..."):
-                        model = GenerativeModel(verbose=False)
-                        model.load(save_path, unsafe=True)
+                    # Load the model with safety check
+                    model = load_model_with_safety_check(
+                        save_path, uploaded_file.name)
+
+                    if model is not None:
                         st.session_state.model = model
                         st.session_state.model_name = ".".join(
-                            uploaded_file.name.split(".")[:-1])
+                            uploaded_file.name.split(".")[:-1]
+                        )
                         st.session_state.current_model = uploaded_file.name
 
-                    st.success(f"Model saved and loaded from {save_path}")
-
-                    # Clear the uploader after successful processing
-                    uploaded_file = None
-                    time.sleep(1)  # Let user see success message
-                    st.rerun()
+                        # Clear the uploader after successful processing
+                        uploaded_file = None
+                        time.sleep(1)  # Let user see success message
+                        st.rerun()
 
             except Exception as e:
                 st.error(f"Invalid model file: {str(e)}")
@@ -116,7 +291,8 @@ def model_selection():
                     del st.session_state[upload_key]
 
         model_dir = st.text_input(
-            "Model directory", value=st.session_state.model_dir)
+            "Model directory", value=st.session_state.model_dir
+        )
 
         if model_dir != st.session_state.model_dir:
             st.session_state.model_dir = model_dir
@@ -125,22 +301,26 @@ def model_selection():
             pass  # Triggers rerun
 
         try:
-            models = [f for f in os.listdir(
-                model_dir) if f.endswith(".pt") or f.endswith(".pth")]
+            models = [
+                f for f in os.listdir(model_dir)
+                if f.endswith(".pt") or f.endswith(".pth")
+            ]
             selected_model = st.selectbox("Available models", models)
 
             if st.button("Load Selected Model", icon=":material/check:"):
                 model_path = os.path.join(model_dir, selected_model)
-                try:
-                    model = GenerativeModel(verbose=False)
-                    model.load(model_path, unsafe=True)
+
+                # Load model with safety check
+                model = load_model_with_safety_check(
+                    model_path, selected_model)
+
+                if model is not None:
                     st.session_state.model = model
                     st.session_state.model_name = ".".join(
-                        selected_model.split(".")[:-1])
+                        selected_model.split(".")[:-1]
+                    )
                     st.session_state.previous_sampler = None
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Error loading model: {str(e)}")
 
         except FileNotFoundError:
             st.error("Model directory not found")
@@ -162,12 +342,16 @@ def model_selection():
             }
 
             sampler_classes = [
-                "EulerMaruyama", "ExponentialIntegrator", "ODEProbabilityFlow", "PredictorCorrector"]
+                "EulerMaruyama", "ExponentialIntegrator",
+                "ODEProbabilityFlow", "PredictorCorrector"
+            ]
 
             current_sampler = _get_class_name(st.session_state.model.sampler)
 
-            index = sampler_classes.index(
-                current_sampler) if current_sampler in sampler_classes else 4
+            index = (
+                sampler_classes.index(current_sampler)
+                if current_sampler in sampler_classes else 4
+            )
             if index == 4:
                 sampler_options["Custom"] = "custom"
 
@@ -189,7 +373,8 @@ def model_selection():
                     st.session_state.model.sampler = sampler_cls
                     if st.session_state.previous_sampler is not None:
                         st.toast(
-                            f"Sampler changed to {selected_sampler}", icon="🔄")
+                            f"Sampler changed to {selected_sampler}", icon="🔄"
+                        )
                     st.session_state.previous_sampler = selected_sampler
                 except Exception as e:
                     st.error(f"Failed to change sampler: {str(e)}")
@@ -200,19 +385,22 @@ def model_selection():
                 "Input Shape": st.session_state.model.shape,
                 "Sampler Type": _get_class_name(st.session_state.model.sampler),
                 "Diffusion Type": {
-                    _get_class_name(
-                        st.session_state.model.diffusion): st.session_state.model.diffusion.config()
+                    _get_class_name(st.session_state.model.diffusion):
+                        st.session_state.model.diffusion.config()
                 }
             }
 
             if st.session_state.model.diffusion.NEEDS_NOISE_SCHEDULE:
                 info["Noise Schedule"] = {
-                    _get_class_name(
-                        st.session_state.model.diffusion.schedule): st.session_state.model.diffusion.schedule.config()
+                    _get_class_name(st.session_state.model.diffusion.schedule):
+                        st.session_state.model.diffusion.schedule.config()
                 }
+
             if st.session_state.model._label_map is not None:
-                info["Labels"] = ", ".join([str(i) for i in
-                                            st.session_state.model._label_map.keys()])
+                info["Labels"] = ", ".join(
+                    [str(i) for i in st.session_state.model._label_map.keys()]
+                )
+
             info["Model Version"] = st.session_state.model.version
             st.json(info)
         else:
@@ -221,42 +409,58 @@ def model_selection():
     add_additional_info()
 
 
-def generation():
+def generation() -> None:
+    """
+    Render the image generation page.
+
+    Provides UI for generating images with the loaded model.
+    """
     st.title("Image Generation")
 
     if st.session_state.model is None:
-        st.warning(
-            "Please load a model first from Model Management")
+        st.warning("Please load a model first from Model Management")
         return
 
     # Get label map from model data
     label_map = st.session_state.model._label_map
 
-    with st.expander("Generation Settings", expanded=True, icon=":material/tune:"):
+    with st.expander(
+        "Generation Settings", expanded=True, icon=":material/tune:"
+    ):
         col1, col2 = st.columns(2)
 
         with col1:
-            num_images = st.slider("Number of images", 1, 16,
-                                   st.session_state.settings["num_images"])
+            num_images = st.slider(
+                "Number of images", 1, 16,
+                st.session_state.settings["num_images"]
+            )
             st.session_state.settings["num_images"] = num_images
             use_seed = st.checkbox(
-                "Use fixed seed", st.session_state.settings["use_seed"])
+                "Use fixed seed", st.session_state.settings["use_seed"]
+            )
             st.session_state.settings["use_seed"] = use_seed
             if use_seed:
                 seed = st.number_input(
-                    "Seed", st.session_state.settings["seed"])
+                    "Seed", st.session_state.settings["seed"]
+                )
                 st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
-                                key="generation_seed")
+                st.number_input(
+                    "Seed", st.session_state.settings["seed"],
+                    disabled=True, key="generation_seed"
+                )
 
         with col2:
-            steps = st.slider("Sampling steps", 10, 1000,
-                              st.session_state.settings["steps"])
+            steps = st.slider(
+                "Sampling steps", 10, 1000,
+                st.session_state.settings["steps"]
+            )
             st.session_state.settings["steps"] = steps
             show_progress = st.checkbox(
-                "Show generation progress", st.session_state.settings["show_progress"])
+                "Show generation progress",
+                st.session_state.settings["show_progress"]
+            )
             st.session_state.settings["show_progress"] = show_progress
 
             # Class selection only if label map exists
@@ -264,21 +468,37 @@ def generation():
                 selected_class = st.selectbox(
                     "Class conditioning",
                     options=[NONE_LABEL] + sorted(label_map.keys()),
-                    index=list(label_map.keys()).index(
-                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                    index=(
+                        list(label_map.keys()).index(
+                            st.session_state.settings["class_label"]
+                        ) if st.session_state.settings["class_label"] in label_map
+                        else 0
+                    )
                 )
-                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                class_id = (
+                    label_map[selected_class] if selected_class != NONE_LABEL
+                    else None
+                )
                 st.session_state.settings["class_id"] = selected_class
             else:
                 class_id = None
 
-    # brush / graient / auto_awesome
+    # brush / gradient / auto_awesome
     if st.button("Generate Images", icon=":material/auto_awesome:"):
         try:
             placeholder = st.empty()
             progress_bars_created = False
 
-            def get_columns_distribution(n_images):
+            def get_columns_distribution(n_images: int) -> List[int]:
+                """
+                Determine the optimal column distribution for displaying images.
+
+                Args:
+                    n_images: Number of images to distribute.
+
+                Returns:
+                    List of integers representing number of columns per row.
+                """
                 if n_images <= 5:
                     return [n_images]
 
@@ -298,12 +518,21 @@ def generation():
                     }
                     return distributions[n_images]
 
-                ret = [5] * n_images // 5
+                ret = [5] * (n_images // 5)
                 if n_images % 5 != 0:
                     ret.append(n_images % 5)
                 return ret
 
-            def update_progress(x_t, step):
+            def update_progress(
+                x_t: torch.Tensor, step: int
+            ) -> None:
+                """
+                Update progress display during image generation.
+
+                Args:
+                    x_t: Current image tensor.
+                    step: Current generation step.
+                """
                 nonlocal progress_bars_created
                 current_images = [tensor_to_image(img) for img in x_t]
                 distribution = get_columns_distribution(len(current_images))
@@ -312,19 +541,25 @@ def generation():
                     row_start = 0
                     for cols_in_row in distribution:
                         cols = st.columns(cols_in_row)
-                        images_in_row = current_images[row_start:row_start+cols_in_row]
+                        images_in_row = current_images[
+                            row_start:row_start+cols_in_row
+                        ]
 
-                        for idx, (img, col) in enumerate(zip(images_in_row, cols)):
+                        for idx, (img, col) in enumerate(
+                            zip(images_in_row, cols)
+                        ):
                             with col:
                                 # Progress image display
                                 buf = io.BytesIO()
                                 img.save(buf, format="PNG")
                                 img_bytes = base64.b64encode(
-                                    buf.getvalue()).decode("utf-8")
+                                    buf.getvalue()
+                                ).decode("utf-8")
 
                                 html = f"""
                                 <div class="image-container">
-                                    <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                    <img src="data:image/png;base64,{img_bytes}" 
+                                         style="width: 100%; height: auto;"/>
                                     <div class="overlay">
                                         <div class="spinner"></div>
                                     </div>
@@ -338,7 +573,8 @@ def generation():
                                     st.session_state[pb_key] = st.progress(0)
                                 else:
                                     st.session_state[pb_key].progress(
-                                        (step + 1) / steps)
+                                        (step + 1) / steps
+                                    )
 
                         row_start += cols_in_row
 
@@ -350,7 +586,9 @@ def generation():
                 n_steps=steps,
                 seed=seed if use_seed else None,
                 class_labels=class_id,
-                progress_callback=update_progress if show_progress else None
+                progress_callback=(
+                    update_progress if show_progress else None
+                )
             )
 
             # Final images display
@@ -363,12 +601,21 @@ def generation():
                     cols = st.columns(cols_in_row)
                     images_in_row = images[row_start:row_start+cols_in_row]
 
-                    for idx, (img, col) in enumerate(zip(images_in_row, cols)):
+                    for idx, (img, col) in enumerate(
+                        zip(images_in_row, cols)
+                    ):
                         with col:
                             st.image(img, use_container_width=True)
 
                             @st.fragment
-                            def download_image(buf, n):
+                            def download_image(buf: io.BytesIO, n: int) -> None:
+                                """
+                                Create download button for an image.
+
+                                Args:
+                                    buf: BytesIO object with image data.
+                                    n: Image number for filename.
+                                """
                                 st.download_button(
                                     f"Download Image {n}",
                                     buf.getvalue(),
@@ -386,14 +633,16 @@ def generation():
 
                     row_start += cols_in_row
 
-            # st.success(
-            #     f"Generated {num_images} images in {time.time()-start_time:.2f}s")
-
         except Exception as e:
             st.error(f"Generation failed: {str(e)}")
 
 
-def colorization():
+def colorization() -> None:
+    """
+    Render the image colorization page.
+
+    Provides UI for colorizing grayscale images.
+    """
     st.title("Image Colorization")
 
     if st.session_state.model is None:
@@ -404,30 +653,40 @@ def colorization():
     label_map = st.session_state.model._label_map
 
     # Settings at the top
-    with st.expander("Colorization Settings", expanded=True, icon=":material/tune:"):
+    with st.expander(
+        "Colorization Settings", expanded=True, icon=":material/tune:"
+    ):
         col1, col2 = st.columns(2)
 
         with col1:
             st.markdown("<div style='height: 100%;'></div>",
                         unsafe_allow_html=True)
             use_seed = st.checkbox(
-                "Use fixed seed", st.session_state.settings["use_seed"])
+                "Use fixed seed", st.session_state.settings["use_seed"]
+            )
             st.session_state.settings["use_seed"] = use_seed
             if use_seed:
                 seed = st.number_input(
-                    "Seed", st.session_state.settings["seed"])
+                    "Seed", st.session_state.settings["seed"]
+                )
                 st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
-                                key="colorization_seed")
+                st.number_input(
+                    "Seed", st.session_state.settings["seed"],
+                    disabled=True, key="colorization_seed"
+                )
 
         with col2:
-            steps = st.slider("Sampling steps", 10, 1000,
-                              st.session_state.settings["steps"])
+            steps = st.slider(
+                "Sampling steps", 10, 1000,
+                st.session_state.settings["steps"]
+            )
             st.session_state.settings["steps"] = steps
             show_progress = st.checkbox(
-                "Show generation progress", st.session_state.settings["show_progress"])
+                "Show generation progress",
+                st.session_state.settings["show_progress"]
+            )
             st.session_state.settings["show_progress"] = show_progress
 
             # Class selection only if label map exists
@@ -435,31 +694,50 @@ def colorization():
                 selected_class = st.selectbox(
                     "Class conditioning",
                     options=[NONE_LABEL] + sorted(label_map.keys()),
-                    index=list(label_map.keys()).index(
-                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                    index=(
+                        list(label_map.keys()).index(
+                            st.session_state.settings["class_label"]
+                        ) if st.session_state.settings["class_label"] in label_map
+                        else 0
+                    )
                 )
-                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                class_id = (
+                    label_map[selected_class] if selected_class != NONE_LABEL
+                    else None
+                )
                 st.session_state.settings["class_id"] = selected_class
             else:
                 class_id = None
 
     uploaded_file = st.file_uploader(
-        "Upload grayscale image", type=["jpg", "png"])
+        "Upload grayscale image", type=["jpg", "png"]
+    )
 
     if uploaded_file is not None:
         col1, col2 = st.columns(2)
         image = Image.open(uploaded_file).convert("L")
 
         with col1:
-            st.image(image, caption="Original Grayscale",
-                     use_container_width=True)
+            st.image(
+                image, caption="Original Grayscale",
+                use_container_width=True
+            )
 
             if st.button("Colorize Image", icon=":material/auto_awesome:"):
                 try:
                     placeholder = col2.empty()
                     progress_bar = None
 
-                    def update_progress(current_tensor, step):
+                    def update_progress(
+                        current_tensor: torch.Tensor, step: int
+                    ) -> None:
+                        """
+                        Update progress display during colorization.
+
+                        Args:
+                            current_tensor: Current image tensor.
+                            step: Current colorization step.
+                        """
                         nonlocal progress_bar
                         current_img = tensor_to_image(current_tensor[0])
 
@@ -468,11 +746,13 @@ def colorization():
                             buf = io.BytesIO()
                             current_img.save(buf, format="PNG")
                             img_bytes = base64.b64encode(
-                                buf.getvalue()).decode("utf-8")
+                                buf.getvalue()
+                            ).decode("utf-8")
 
                             html = f"""
                             <div class="image-container">
-                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <img src="data:image/png;base64,{img_bytes}" 
+                                     style="width: 100%; height: auto;"/>
                                 <div class="overlay">
                                     <div class="spinner"></div>
                                 </div>
@@ -486,27 +766,34 @@ def colorization():
                             progress_bar.progress((step + 1) / steps)
 
                     # Convert to tensor and process
-                    tensor = torch.tensor(np.array(image) / 255.0).unsqueeze(0)
+                    tensor = torch.tensor(
+                        np.array(image) / 255.0
+                    ).unsqueeze(0)
                     colored = st.session_state.model.colorize(
                         tensor,
                         n_steps=steps,
                         seed=seed if use_seed else None,
                         class_labels=class_id,
-                        progress_callback=update_progress if show_progress else None
+                        progress_callback=(
+                            update_progress if show_progress else None
+                        )
                     )
                     colored_img = tensor_to_image(colored[0])
 
                     # Final display
                     with placeholder.container():
-                        st.image(colored_img, caption="Colorized Result",
-                                 use_container_width=True)
+                        st.image(
+                            colored_img, caption="Colorized Result",
+                            use_container_width=True
+                        )
 
                         # Download button
                         buf = io.BytesIO()
                         colored_img.save(buf, format="PNG")
 
                         @st.fragment
-                        def create_download():
+                        def create_download() -> None:
+                            """Create download button for the colorized image."""
                             st.download_button(
                                 "Download Colorized Image",
                                 buf.getvalue(),
@@ -521,7 +808,12 @@ def colorization():
                     st.error(f"Colorization failed: {str(e)}")
 
 
-def imputation():
+def imputation() -> None:
+    """
+    Render the image imputation page.
+
+    Provides UI for filling in transparent areas of images.
+    """
     st.title("Image Imputation")
 
     if st.session_state.model is None:
@@ -532,28 +824,38 @@ def imputation():
     label_map = st.session_state.model._label_map
 
     # Settings at the top
-    with st.expander("Imputation Settings", expanded=True, icon=":material/tune:"):
+    with st.expander(
+        "Imputation Settings", expanded=True, icon=":material/tune:"
+    ):
         col1, col2 = st.columns(2)
 
         with col1:
             use_seed = st.checkbox(
-                "Use fixed seed", st.session_state.settings["use_seed"])
+                "Use fixed seed", st.session_state.settings["use_seed"]
+            )
             st.session_state.settings["use_seed"] = use_seed
             if use_seed:
                 seed = st.number_input(
-                    "Seed", st.session_state.settings["seed"])
+                    "Seed", st.session_state.settings["seed"]
+                )
                 st.session_state.settings["seed"] = seed
             else:
                 seed = None
-                st.number_input("Seed", st.session_state.settings["seed"], disabled=True,
-                                key="imputation_seed")
+                st.number_input(
+                    "Seed", st.session_state.settings["seed"],
+                    disabled=True, key="imputation_seed"
+                )
 
         with col2:
-            steps = st.slider("Sampling steps", 10, 1000,
-                              st.session_state.settings["steps"])
+            steps = st.slider(
+                "Sampling steps", 10, 1000,
+                st.session_state.settings["steps"]
+            )
             st.session_state.settings["steps"] = steps
             show_progress = st.checkbox(
-                "Show generation progress", st.session_state.settings["show_progress"])
+                "Show generation progress",
+                st.session_state.settings["show_progress"]
+            )
             st.session_state.settings["show_progress"] = show_progress
 
             # Class selection only if label map exists
@@ -561,16 +863,25 @@ def imputation():
                 selected_class = st.selectbox(
                     "Class conditioning",
                     options=[NONE_LABEL] + sorted(label_map.keys()),
-                    index=list(label_map.keys()).index(
-                        st.session_state.settings["class_label"]) if st.session_state.settings["class_label"] in label_map else 0
+                    index=(
+                        list(label_map.keys()).index(
+                            st.session_state.settings["class_label"]
+                        ) if st.session_state.settings["class_label"] in label_map
+                        else 0
+                    )
                 )
-                class_id = label_map[selected_class] if selected_class != NONE_LABEL else None
+                class_id = (
+                    label_map[selected_class] if selected_class != NONE_LABEL
+                    else None
+                )
                 st.session_state.settings["class_label"] = selected_class
             else:
                 class_id = None
 
-    uploaded_file = st.file_uploader("Upload image with transparent areas to inpaint",
-                                     type=["png", "webp"])
+    uploaded_file = st.file_uploader(
+        "Upload image with transparent areas to inpaint",
+        type=["png", "webp"]
+    )
 
     if uploaded_file is not None:
         image = Image.open(uploaded_file).convert("RGBA")  # Force RGBA mode
@@ -585,7 +896,9 @@ def imputation():
 
         if not np.any(mask):
             st.warning(
-                "No transparent areas detected - please upload an image with transparent regions to inpaint")
+                "No transparent areas detected - please upload an image "
+                "with transparent regions to inpaint"
+            )
             return
 
         col1, col2 = st.columns(2)
@@ -598,13 +911,17 @@ def imputation():
             st.markdown(f"""
                 <div class="image-mask-container">
                     <div class="checkerboard-bg">
-                        <img class="imputation-image" style="image-rendering: pixelated;" src="data:image/png;base64,{img_b64}" />
+                        <img class="imputation-image" style="image-rendering: pixelated;" 
+                             src="data:image/png;base64,{img_b64}" />
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.caption(
-                "<p style='text-align: center;'>Original Image with Transparency</p>", unsafe_allow_html=True)
+                "<p style='text-align: center;'>Original Image with "
+                "Transparency</p>",
+                unsafe_allow_html=True
+            )
 
             if st.button("Impute Image", icon=":material/auto_awesome:"):
                 try:
@@ -612,15 +929,26 @@ def imputation():
 
                     # Convert to tensors and move to model device
                     img_tensor = torch.tensor(
-                        np.array(rgb_img)/255.0).permute(2, 0, 1).unsqueeze(0).float().to(device)
+                        np.array(rgb_img)/255.0
+                    ).permute(2, 0, 1).unsqueeze(0).float().to(device)
                     mask_tensor = torch.from_numpy(mask).unsqueeze(
-                        0).unsqueeze(0).to(device)
+                        0
+                    ).unsqueeze(0).to(device)
 
                     # Setup progress display
                     placeholder = col2.empty()
                     progress_bar = None
 
-                    def update_progress(current_tensor, step):
+                    def update_progress(
+                        current_tensor: torch.Tensor, step: int
+                    ) -> None:
+                        """
+                        Update progress display during imputation.
+
+                        Args:
+                            current_tensor: Current image tensor.
+                            step: Current imputation step.
+                        """
                         nonlocal progress_bar
                         current_img = tensor_to_image(current_tensor[0].cpu())
 
@@ -629,11 +957,13 @@ def imputation():
                             buf = io.BytesIO()
                             current_img.save(buf, format="PNG")
                             img_bytes = base64.b64encode(
-                                buf.getvalue()).decode("utf-8")
+                                buf.getvalue()
+                            ).decode("utf-8")
 
                             html = f"""
                             <div class="image-container">
-                                <img src="data:image/png;base64,{img_bytes}" style="width: 100%; height: auto;"/>
+                                <img src="data:image/png;base64,{img_bytes}" 
+                                     style="width: 100%; height: auto;"/>
                                 <div class="overlay">
                                     <div class="spinner"></div>
                                 </div>
@@ -652,7 +982,9 @@ def imputation():
                         n_steps=steps,
                         seed=seed if use_seed else None,
                         class_labels=class_id,
-                        progress_callback=update_progress if show_progress else None
+                        progress_callback=(
+                            update_progress if show_progress else None
+                        )
                     )
 
                     # Convert result back to CPU for display
@@ -660,14 +992,17 @@ def imputation():
 
                     # Final display
                     with placeholder.container():
-                        st.image(imputed_img, caption="Imputed Result",
-                                 use_container_width=True)
+                        st.image(
+                            imputed_img, caption="Imputed Result",
+                            use_container_width=True
+                        )
 
                         buf = io.BytesIO()
                         imputed_img.save(buf, format="PNG")
 
                         @st.fragment
-                        def create_download():
+                        def create_download() -> None:
+                            """Create download button for the imputed image."""
                             st.download_button(
                                 "Download Imputed Image",
                                 buf.getvalue(),
@@ -682,6 +1017,7 @@ def imputation():
                     st.error(f"Imputation failed: {str(e)}")
 
 
+# Define page hierarchy
 pages = {
     "Management": [
         st.Page(model_selection, title="Model Selection",
@@ -695,28 +1031,51 @@ pages = {
 }
 
 
-def main():
-    st.set_page_config(page_title="Image Generation Dashboard", layout="wide", page_icon=":frame_with_picture:",
-                       initial_sidebar_state="expanded", menu_items={"about": "\n\n".join(about) + "\n\n---"})
+def main() -> None:
+    """
+    Initialize and run the Streamlit dashboard.
+
+    Sets up the page configuration, styles, and session state variables.
+    """
+    st.set_page_config(
+        page_title="Image Generation Dashboard",
+        layout="wide",
+        page_icon=":frame_with_picture:",
+        initial_sidebar_state="expanded",
+        menu_items={"about": "\n\n".join(ABOUT) + "\n\n---"}
+    )
 
     primary_color = toml.load(
-        ".streamlit/config.toml")["theme"]["primaryColor"]
-    st.html("<style>" + load_css() + "\na {\n    color: " + primary_color + " !important;\n}\n\ncode {\n    color: " +
-            primary_color + " !important;\n}\n\n:root {\n    --primary-color: " + primary_color + ";\n}</style>")
+        ".streamlit/config.toml"
+    )["theme"]["primaryColor"]
+
+    st.html(
+        "<style>" + load_css() +
+        "\na {\n    color: " + primary_color + " !important;\n}\n\n" +
+        "code {\n    color: " + primary_color + " !important;\n}\n\n" +
+        ":root {\n    --primary-color: " + primary_color + ";\n}</style>"
+    )
 
     # Initialize session state
     if 'model' not in st.session_state:
         st.session_state.model = None
     else:
-        if st.session_state.model is not None and st.session_state.model._label_map is None and len(st.session_state.model.stored_labels) > 1:
+        if (st.session_state.model is not None and
+                st.session_state.model._label_map is None and
+                len(st.session_state.model.stored_labels) > 1):
             st.session_state.model.set_labels(
-                st.session_state.model.stored_labels)
+                st.session_state.model.stored_labels
+            )
+
     if 'model_name' not in st.session_state:
         st.session_state.model_name = None
+
     if 'model_dir' not in st.session_state:
         st.session_state.model_dir = "examples/saved_models"
+
     if 'current_model_info' not in st.session_state:
         st.session_state.current_model_info = None
+
     if 'settings' not in st.session_state:
         st.session_state.settings = {
             "num_images": 4,
@@ -736,7 +1095,8 @@ def main():
                 opacity: 0.5;
                 color: #999 !important;
             }}
-            [data-testid="stNavSectionHeader"]:first-child + li a[data-testid="stSidebarNavLink"] {{
+            [data-testid="stNavSectionHeader"]:first-child + li 
+            a[data-testid="stSidebarNavLink"] {{
                 pointer-events: auto;
                 cursor: pointer;
                 opacity: 1;
