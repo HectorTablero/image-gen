@@ -1,0 +1,36 @@
+site_name: Diffusion-Based Image Generation
+site_description: Documentation for diffusion-based image generation models
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+
+nav:
+  - Main: index.md
+  - Diffusion: diffusion.md
+  - Noise Schedules: noise.md
+  - Samplers: samplers.md
+  - Metrics: metrics.md
+  - Others: others.md

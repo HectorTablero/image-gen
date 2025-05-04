@@ -59,6 +59,7 @@ class ScoreNet(nn.Module):
         """
         super().__init__()
 
+        # Store configuration parameters
         self.num_channels = num_c
         self.num_classes = num_classes
         self.class_dropout_prob = class_dropout_prob
@@ -69,27 +70,57 @@ class ScoreNet(nn.Module):
             nn.Linear(embed_dim, embed_dim)
         )
 
+        # Class embedding layer for conditional generation
         if num_classes is not None:
             self.class_embed = nn.Embedding(num_classes, embed_dim)
 
-        # Encoding path
+        # Encoding path - downsampling blocks
+        # First block - no downsampling
         self.conv1 = nn.Conv2d(
-            num_c, channels[0], 3, stride=1, padding=1, bias=False)
+            num_c,
+            channels[0],
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False
+        )
         self.dense1 = Dense(embed_dim, channels[0])
+        # Fewer groups for smaller channels
         self.gnorm1 = nn.GroupNorm(4, channels[0])
 
+        # Second block - downsample by factor of 2
         self.conv2 = nn.Conv2d(
-            channels[0], channels[1], 3, stride=2, padding=1, bias=False)
+            channels[0],
+            channels[1],
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False
+        )
         self.dense2 = Dense(embed_dim, channels[1])
         self.gnorm2 = nn.GroupNorm(32, channels[1])
 
+        # Third block - downsample by factor of 2
         self.conv3 = nn.Conv2d(
-            channels[1], channels[2], 3, stride=2, padding=1, bias=False)
+            channels[1],
+            channels[2],
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False
+        )
         self.dense3 = Dense(embed_dim, channels[2])
         self.gnorm3 = nn.GroupNorm(32, channels[2])
 
+        # Fourth block - downsample by factor of 2
         self.conv4 = nn.Conv2d(
-            channels[2], channels[3], 3, stride=2, padding=1, bias=False)
+            channels[2],
+            channels[3],
+            kernel_size=3,
+            stride=2,
+            padding=1,
+            bias=False
+        )
         self.dense4 = Dense(embed_dim, channels[3])
         self.gnorm4 = nn.GroupNorm(32, channels[3])
 

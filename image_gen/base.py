@@ -1,3 +1,9 @@
+"""Generative model implementation for diffusion-based image generation.
+
+This module implements a generative model framework that supports multiple
+diffusion processes, sampling methods, and noise schedules for image generation.
+"""
+
 from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, SubVariancePreserving
 from .samplers import BaseSampler, EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
 from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
@@ -16,6 +22,18 @@ MODEL_VERSION = 3
 
 
 class GenerativeModel:
+    """Generative model for diffusion-based image generation.
+
+    This class implements a framework for training and using generative diffusion models
+    for tasks such as image generation, colorization, and inpainting.
+
+    Attributes:
+        diffusion: The diffusion process to use.
+        sampler: The sampling algorithm for generation.
+        model: The underlying score network model.
+        device: The device on which the model is running.
+    """
+
     DIFFUSION_MAP = {
         "variance exploding": VarianceExploding,
         "varianceexploding": VarianceExploding,
@@ -77,14 +95,33 @@ class GenerativeModel:
         "is": InceptionScore,
     }
 
-    def __init__(self,
-                 diffusion: Optional[Union[BaseDiffusion, type,
-                                           Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
-                 sampler: Optional[Union[BaseSampler, type,
-                                         Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
-                 noise_schedule: Optional[Union[BaseNoiseSchedule,
-                                                type, Literal["linear", "lin", "cosine", "cos"]]] = None,
-                 verbose: bool = True) -> None:
+    def __init__(
+        self,
+        diffusion: Optional[Union[BaseDiffusion, type,
+                                  Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
+        sampler: Optional[Union[BaseSampler, type,
+                                Literal["euler-maruyama", "euler", "em",
+                                        "exponential", "exp", "ode",
+                                        "predictor-corrector", "pred"]]] = "euler-maruyama",
+        noise_schedule: Optional[Union[BaseNoiseSchedule, type,
+                                       Literal["linear", "lin", "cosine", "cos"]]] = None,
+        verbose: bool = True
+    ) -> None:
+        """Initializes the generative model.
+
+        Args:
+            diffusion: The diffusion process to use. Can be a string identifier,
+                a diffusion class, or a diffusion instance.
+            sampler: The sampling algorithm to use. Can be a string identifier,
+                a sampler class, or a sampler instance.
+            noise_schedule: The noise schedule to use. Only required for diffusion
+                processes that need a noise schedule.
+            verbose: Whether to display progress bars during generation and training.
+
+        Raises:
+            ValueError: If an unknown diffusion or sampler string is provided.
+            TypeError: If the diffusion or sampler has an invalid type.
+        """
         self._model = None
         self._verbose = verbose
         self._num_classes = None  # Initialize this attribute
@@ -114,7 +151,9 @@ class GenerativeModel:
             except KeyError:
                 raise ValueError(f"Unknown sampler string: {sampler}")
 
-        if noise_schedule is None and ((isinstance(diffusion, type) or isinstance(diffusion, BaseDiffusion)) and diffusion.NEEDS_NOISE_SCHEDULE):
+        if noise_schedule is None and ((isinstance(diffusion, type) or
+                                        isinstance(diffusion, BaseDiffusion)) and
+                                       diffusion.NEEDS_NOISE_SCHEDULE):
             noise_schedule = "linear"
 
         if isinstance(noise_schedule, str):
@@ -135,14 +174,16 @@ class GenerativeModel:
             else:
                 if noise_schedule is not None:
                     warnings.warn(
-                        f"{diffusion.__name__} does not require a noise schedule. The provided noise schedule will be ignored.",
+                        f"{diffusion.__name__} does not require a noise schedule. "
+                        f"The provided noise schedule will be ignored.",
                         UserWarning
                     )
                 self.diffusion = diffusion()
         else:
             if not diffusion.NEEDS_NOISE_SCHEDULE and noise_schedule is not None:
                 warnings.warn(
-                    f"{diffusion.__class__.__name__} does not require a noise schedule. The provided noise schedule will be ignored.",
+                    f"{diffusion.__class__.__name__} does not require a noise schedule. "
+                    f"The provided noise schedule will be ignored.",
                     UserWarning
                 )
             self.diffusion = diffusion
@@ -166,12 +207,14 @@ class GenerativeModel:
 
     @property
     def device(self) -> torch.device:
+        """Device on which the model is running."""
         if self._model is not None:
             return next(self._model.parameters()).device
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @property
     def version(self) -> int:
+        """Version of the model."""
         return self._version
 
     @property
@@ -196,6 +239,7 @@ class GenerativeModel:
 
     @property
     def labels(self) -> List[str]:
+        """String labels for classes."""
         return self._label_map if self._label_map is not None else []
 
     @property
@@ -205,14 +249,21 @@ class GenerativeModel:
 
     @property
     def verbose(self) -> bool:
+        """Whether to display progress bars during operations."""
         return self._verbose
 
     @property
     def noise_schedule(self) -> BaseNoiseSchedule:
+        """The noise schedule used by the diffusion process."""
         return self.diffusion.schedule if hasattr(self.diffusion, 'schedule') else None
 
     @verbose.setter
     def verbose(self, value: bool):
+        """Sets the verbose flag for the model and sampler.
+
+        Args:
+            value: Whether to display progress bars.
+        """
         self._verbose = value
         if hasattr(self.sampler, 'verbose'):
             self.sampler.verbose = value
@@ -224,6 +275,15 @@ class GenerativeModel:
 
     @diffusion.setter
     def diffusion(self, value: Union[BaseDiffusion, type, str]):
+        """Sets the diffusion process.
+
+        Args:
+            value: The diffusion process to use.
+
+        Raises:
+            ValueError: If the diffusion is not a subclass of BaseDiffusion.
+            TypeError: If the diffusion has an invalid type.
+        """
         if self._model is not None:
             warnings.warn(
                 "Diffusion cannot be changed after training", UserWarning)
@@ -253,6 +313,15 @@ class GenerativeModel:
 
     @sampler.setter
     def sampler(self, value: Union[BaseSampler, type, str]):
+        """Sets the sampling algorithm.
+
+        Args:
+            value: The sampler to use.
+
+        Raises:
+            ValueError: If the sampler is not a subclass of BaseSampler.
+            TypeError: If the sampler has an invalid type.
+        """
         if isinstance(value, str):
             value = self.SAMPLER_MAP.get(value.lower(), EulerMaruyama)
 
@@ -272,20 +341,47 @@ class GenerativeModel:
         self._sampler.verbose = self.verbose
 
     def _progress(self, iterable: Iterable, **kwargs: Dict[str, Any]) -> Iterable:
-        """Wrap with tqdm only if verbose is enabled"""
+        """Wraps an iterable with a progress bar if verbose is enabled.
+
+        Args:
+            iterable: The iterable to wrap.
+            **kwargs: Additional arguments to pass to tqdm.
+
+        Returns:
+            The wrapped iterable, or the original if verbose is disabled.
+        """
         return tqdm(iterable, **kwargs) if self._verbose else iterable
 
     def _build_default_model(self, shape: Tuple[int, int, int] = (3, 32, 32)):
+        """Builds the default score model.
+
+        Args:
+            shape: The input shape (channels, height, width).
+        """
         device = self.device  # Creating the ScoreNet changes the device, so this line is necessary
         self._num_channels = shape[0]
         self._shape = (shape[1], shape[2])
         self._model = ScoreNet(
-            marginal_prob_std=self.diffusion.schedule, num_c=shape[0], num_classes=self.num_classes)
+            marginal_prob_std=self.diffusion.schedule,
+            num_c=shape[0],
+            num_classes=self.num_classes
+        )
         if self.device.type == "cuda":
             self._model = torch.nn.DataParallel(self.model)
         self._model = self.model.to(device)
 
-    def loss_function(self, x0: torch.Tensor, eps: float = 1e-5, class_labels: Optional[Tensor] = None) -> torch.Tensor:
+    def loss_function(self, x0: torch.Tensor, eps: float = 1e-5,
+                      class_labels: Optional[Tensor] = None) -> torch.Tensor:
+        """Computes the loss for training the score model.
+
+        Args:
+            x0: The input data.
+            eps: Small constant to avoid numerical issues.
+            class_labels: Class labels for conditional generation.
+
+        Returns:
+            The computed loss value.
+        """
         t = torch.rand(x0.shape[0], device=x0.device) * (1.0 - eps) + eps
         xt, noise = self.diffusion.forward_process(x0, t)
         score = self.model(xt, t, class_label=class_labels)
@@ -302,10 +398,18 @@ class GenerativeModel:
         batch_size: int = 32,
         lr: float = 1e-3
     ) -> None:
+        """Trains the score model.
+
+        Args:
+            dataset: The dataset to train on. Can be a torch Dataset or a list
+                of tensors or (tensor, label) tuples.
+            epochs: Number of training epochs.
+            batch_size: Batch size for training.
+            lr: Learning rate for the optimizer.
+        """
         first = dataset[0]
 
-        has_labels = isinstance(
-            first, (list, tuple)) and len(first) > 1
+        has_labels = isinstance(first, (list, tuple)) and len(first) > 1
         if has_labels:
             all_labels = [
                 label if isinstance(label, Tensor) else torch.tensor(label)
@@ -314,13 +418,13 @@ class GenerativeModel:
             all_labels_tensor = torch.cat([lbl.view(-1) for lbl in all_labels])
             self._stored_labels = sorted(all_labels_tensor.unique().tolist())
 
-            # Crear mapeo de labels originales a índices 0-based
+            # Create mapping from original labels to 0-based indices
             self._label_to_index = {
                 lbl: idx for idx, lbl in enumerate(self.stored_labels)
             }
             self._num_classes = len(self.stored_labels)
 
-            # Mapear todas las etiquetas a índices
+            # Map all labels to indices
             self._mapped_labels = torch.tensor([
                 self._label_to_index[lbl.item()]
                 for lbl in all_labels_tensor
@@ -345,7 +449,7 @@ class GenerativeModel:
             for batch in batch_bar:
                 if has_labels:
                     x0, original_labels = batch[0], batch[1]
-                    # Convertir labels originales a índices mapeados
+                    # Convert original labels to mapped indices
                     labels = torch.tensor([
                         self._label_to_index[lbl.item()]
                         for lbl in original_labels
@@ -372,7 +476,15 @@ class GenerativeModel:
 
             # epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
 
-    def set_labels(self, labels: List[str]):
+    def set_labels(self, labels: List[str]) -> None:
+        """Sets string labels for the model's classes.
+
+        Args:
+            labels: List of string labels, one per class.
+
+        Raises:
+            ValueError: If the number of labels doesn't match the number of classes.
+        """
         # Check if model has class conditioning
         if not hasattr(self, 'num_classes') or self.num_classes is None:
             warnings.warn(
@@ -399,7 +511,24 @@ class GenerativeModel:
             for numeric_label, string_label in zip(self.stored_labels, labels)
         }
 
-    def score(self, real: Tensor, generated: Tensor, metrics: List[Union[str, BaseMetric]] = ["bpd", "fid", "is"], *args, **kwargs) -> Dict[str, float]:
+    def score(self, real: Tensor, generated: Tensor,
+              metrics: List[Union[str, BaseMetric]] = ["bpd", "fid", "is"],
+              *args, **kwargs) -> Dict[str, float]:
+        """Evaluates the model using various metrics.
+
+        Args:
+            real: Real data samples.
+            generated: Generated data samples.
+            metrics: List of metrics to compute. Can be strings or BaseMetric instances.
+            *args: Additional arguments for metrics.
+            **kwargs: Additional keyword arguments for metrics.
+
+        Returns:
+            Dictionary mapping metric names to scores.
+
+        Raises:
+            Exception: If metrics is empty or not a list.
+        """
         if not isinstance(metrics, list) or len(metrics) == 0:
             raise Exception(
                 "Scores must be a non-empty list.")
@@ -424,7 +553,22 @@ class GenerativeModel:
 
         return calculated_scores
 
-    def _class_conditional_score(self, class_labels: Union[int, Tensor], num_samples: int, guidance_scale: float = 3.0) -> Callable[[Tensor, Tensor], Tensor]:
+    def _class_conditional_score(self, class_labels: Union[int, Tensor],
+                                 num_samples: int,
+                                 guidance_scale: float = 3.0) -> Callable[[Tensor, Tensor], Tensor]:
+        """Creates a class-conditional score function.
+
+        Args:
+            class_labels: Class labels for conditional generation.
+            num_samples: Number of samples to generate.
+            guidance_scale: Scale factor for classifier-free guidance.
+
+        Returns:
+            A function that computes the score for a given input and time.
+
+        Raises:
+            ValueError: If class_labels has an invalid type.
+        """
         if class_labels is None:
             return self.model
 
@@ -461,6 +605,15 @@ class GenerativeModel:
         processed_labels = class_labels.to(self.device)
 
         def guided_score(x: Tensor, t: Tensor) -> Tensor:
+            """Computes the guided score for classifier-free guidance.
+
+            Args:
+                x: The input tensor.
+                t: The time tensor.
+
+            Returns:
+                The guided score.
+            """
             uncond_score = self.model(x, t, class_label=None)
 
             # Conditional score - ensure we pass proper labels
@@ -495,6 +648,23 @@ class GenerativeModel:
                      Tensor, int], None]] = None,
                  callback_frequency: int = 50
                  ) -> torch.Tensor:
+        """Generates samples from the model.
+
+        Args:
+            num_samples: Number of samples to generate.
+            n_steps: Number of sampling steps.
+            seed: Random seed for reproducibility.
+            class_labels: Class labels for conditional generation.
+            guidance_scale: Scale factor for classifier-free guidance.
+            progress_callback: Function to call with intermediate results.
+            callback_frequency: How often to call the progress callback.
+
+        Returns:
+            The generated samples.
+
+        Raises:
+            ValueError: If the model is not initialized.
+        """
         if not hasattr(self, 'model') or self.model is None:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
@@ -526,7 +696,21 @@ class GenerativeModel:
                  seed: Optional[int] = None,
                  class_labels: Optional[Union[int, Tensor]] = None,
                  progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
-        """Colorize grayscale images using YUV-space luminance enforcement"""
+        """Colorizes grayscale images using YUV-space luminance enforcement.
+
+        Args:
+            x: Grayscale input image(s).
+            n_steps: Number of sampling steps.
+            seed: Random seed for reproducibility.
+            class_labels: Class labels for conditional generation.
+            progress_callback: Function to call with intermediate results.
+
+        Returns:
+            The colorized images.
+
+        Raises:
+            ValueError: If the model doesn't have 3 channels or the input has invalid shape.
+        """
         if not hasattr(self, 'num_channels') or self.num_channels != 3:
             raise ValueError("Colorization requires a 3-channel model")
 
@@ -555,14 +739,19 @@ class GenerativeModel:
             x_T, _ = self.diffusion.forward_process(x_init, t_T)
 
         def enforce_luminance(x_t: Tensor, t: Tensor) -> Tensor:
-            """Enforce Y channel while preserving UV color information"""
+            """Enforces Y channel while preserving UV color information.
+
+            Args:
+                x_t: Current RGB image.
+                t: Current time step.
+
+            Returns:
+                Modified RGB image with enforced Y channel.
+            """
             with torch.no_grad():
                 yuv = self._rgb_to_yuv(x_t)
-
                 yuv[:, 0:1] = y_target
-
                 enforced_rgb = self._yuv_to_rgb(yuv)
-
                 alpha = t.item() / n_steps
                 return enforced_rgb * (1 - alpha) + x_t * alpha
 
@@ -587,7 +776,14 @@ class GenerativeModel:
 
     @staticmethod
     def _rgb_to_yuv(img: Tensor) -> Tensor:
-        """Convert RGB tensor (B,3,H,W) to YUV (B,3,H,W)"""
+        """Converts RGB tensor (B,3,H,W) to YUV (B,3,H,W).
+
+        Args:
+            img: RGB image tensor.
+
+        Returns:
+            YUV image tensor.
+        """
         r, g, b = img.chunk(3, dim=1)
         y = 0.299 * r + 0.587 * g + 0.114 * b
         u = 0.492 * (b - y) + 0.5
@@ -596,7 +792,14 @@ class GenerativeModel:
 
     @staticmethod
     def _yuv_to_rgb(yuv: Tensor) -> Tensor:
-        """Convert YUV tensor (B,3,H,W) to RGB (B,3,H,W)"""
+        """Converts YUV tensor (B,3,H,W) to RGB (B,3,H,W).
+
+        Args:
+            yuv: YUV image tensor.
+
+        Returns:
+            RGB image tensor.
+        """
         y, u, v = yuv.chunk(3, dim=1)
         u = (u - 0.5) / 0.492
         v = (v - 0.5) / 0.877
@@ -610,7 +813,22 @@ class GenerativeModel:
                    seed: Optional[int] = None,
                    class_labels: Optional[Union[int, Tensor]] = None,
                    progress_callback: Optional[Callable[[Tensor, int], None]] = None) -> Tensor:
-        """Image inpainting with mask-guided generation and proper normalization"""
+        """Performs image inpainting with mask-guided generation.
+
+        Args:
+            x: Input image(s) with missing regions.
+            mask: Binary mask where 1 indicates pixels to generate (missing regions).
+            n_steps: Number of sampling steps.
+            seed: Random seed for reproducibility.
+            class_labels: Class labels for conditional generation.
+            progress_callback: Function to call with intermediate results.
+
+        Returns:
+            Inpainted image(s).
+
+        Raises:
+            ValueError: If image and mask dimensions don't match.
+        """
         if x.shape[-2:] != mask.shape[-2:]:
             raise ValueError(
                 "Image and mask must have same spatial dimensions")
@@ -638,6 +856,15 @@ class GenerativeModel:
             x_T, _ = self.diffusion.forward_process(x_T, t_T)
 
         def inpaint_guidance(x_t: Tensor, _: Tensor) -> Tensor:
+            """Preserves known pixels in the image during sampling.
+
+            Args:
+                x_t: Current image state.
+                _: Current time step (unused).
+
+            Returns:
+                Modified image with preserved pixels.
+            """
             with torch.no_grad():
                 return torch.where(preserve_mask, x_normalized, x_t)
 
@@ -665,7 +892,12 @@ class GenerativeModel:
 
         return result
 
-    def save(self, path: str):
+    def save(self, path: str) -> None:
+        """Saves the model to the specified path.
+
+        Args:
+            path: Path where to save the model.
+        """
         save_data = {
             'model_state': self.model.state_dict(),
             'shape': self.shape,
@@ -700,6 +932,15 @@ class GenerativeModel:
         torch.save(save_data, path)
 
     def _rebuild_diffusion(self, checkpoint: Dict[str, Any], unsafe: bool = False):
+        """Rebuilds the diffusion process from a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint data.
+            unsafe: Whether to allow loading custom code.
+
+        Raises:
+            Exception: If the checkpoint contains custom code and unsafe is False.
+        """
         default_diffusion = VarianceExploding.__name__.lower()
         diffusion_type = checkpoint.get("diffusion_type", default_diffusion)
         diffusion_cls = GenerativeModel.DIFFUSION_MAP.get(diffusion_type)
@@ -712,16 +953,33 @@ class GenerativeModel:
                     diffusion_cls = lambda *args, **kwargs: CustomClassWrapper(
                         diffusion_code, *args, **kwargs)
                     warnings.warn(
-                        "This model has been instantiated with a custom diffuser. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                        "This model has been instantiated with a custom diffuser. "
+                        "Please verify the safety of the code before calling any methods "
+                        "of the GenerativeModel. It can be viewed with "
+                        "GenerativeModel.show_custom_code(), and won't be run until needed.")
                 else:
                     raise Exception(
-                        "The saved model uses a custom diffuser, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
+                        "The saved model uses a custom diffuser, which is not allowed for "
+                        "safety reasons. If you want to load the custom class, use "
+                        "model.load(path, override=True, unsafe=True).")
 
         schedule = self._rebuild_noise_schedule(checkpoint, unsafe=unsafe)
         config = checkpoint.get('diffusion_config', {})
         self._diffusion = diffusion_cls(schedule, **config)
 
     def _rebuild_noise_schedule(self, checkpoint: Dict[str, Any], unsafe: bool = False) -> BaseNoiseSchedule:
+        """Rebuilds the noise schedule from a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint data.
+            unsafe: Whether to allow loading custom code.
+
+        Returns:
+            The rebuilt noise schedule.
+
+        Raises:
+            Exception: If the checkpoint contains custom code and unsafe is False.
+        """
         default_schedule = LinearNoiseSchedule.__name__.lower()
         schedule_type = checkpoint.get("noise_schedule_type", default_schedule)
         schedule_cls = GenerativeModel.NOISE_SCHEDULE_MAP.get(schedule_type)
@@ -734,15 +992,29 @@ class GenerativeModel:
                     schedule_cls = lambda *args, **kwargs: CustomClassWrapper(
                         schedule_code, *args, **kwargs)
                     warnings.warn(
-                        "This model has been instantiated with a custom schedule. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                        "This model has been instantiated with a custom schedule. "
+                        "Please verify the safety of the code before calling any methods "
+                        "of the GenerativeModel. It can be viewed with "
+                        "GenerativeModel.show_custom_code(), and won't be run until needed.")
                 else:
                     raise Exception(
-                        "The saved model uses a custom schedule, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
+                        "The saved model uses a custom schedule, which is not allowed for "
+                        "safety reasons. If you want to load the custom class, use "
+                        "model.load(path, override=True, unsafe=True).")
 
         config = checkpoint.get('noise_schedule_config', {})
         return schedule_cls(**config)
 
     def _rebuild_sampler(self, checkpoint: Dict[str, Any], unsafe: bool = False):
+        """Rebuilds the sampler from a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint data.
+            unsafe: Whether to allow loading custom code.
+
+        Raises:
+            Exception: If the checkpoint contains custom code and unsafe is False.
+        """
         default_sampler = EulerMaruyama.__name__.lower()
         sampler_type = checkpoint.get("sampler_type", default_sampler)
         sampler_cls = GenerativeModel.SAMPLER_MAP.get(sampler_type)
@@ -755,20 +1027,33 @@ class GenerativeModel:
                     sampler_cls = lambda *args, **kwargs: CustomClassWrapper(
                         sampler_code, *args, **kwargs)
                     warnings.warn(
-                        "This model has been instantiated with a custom sampler. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                        "This model has been instantiated with a custom sampler. "
+                        "Please verify the safety of the code before calling any methods "
+                        "of the GenerativeModel. It can be viewed with "
+                        "GenerativeModel.show_custom_code(), and won't be run until needed.")
                 else:
                     raise Exception(
-                        "The saved model uses a custom sampler, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
+                        "The saved model uses a custom sampler, which is not allowed for "
+                        "safety reasons. If you want to load the custom class, use "
+                        "model.load(path, override=True, unsafe=True).")
 
         if self._sampler.__class__ != sampler_cls:
             warnings.warn(
-                f"The model was initialized with sampler {self._sampler.__class__.__name__}, but the saved model has {sampler_cls.__name__}. The sampler will be set to {sampler_cls.__name__}. If you don't want this behaviour, use model.load(path, override = False)."
+                f"The model was initialized with sampler {self._sampler.__class__.__name__}, "
+                f"but the saved model has {sampler_cls.__name__}. The sampler will be set to "
+                f"{sampler_cls.__name__}. If you don't want this behaviour, use "
+                f"model.load(path, override=False)."
             )
         config = checkpoint.get('sampler_config', {})
         self._sampler = sampler_cls(
             self.diffusion, **config, verbose=self._verbose)
 
     def get_custom_code(self) -> dict:
+        """Returns any custom code components used by the model.
+
+        Returns:
+            Dictionary mapping component names to their source code.
+        """
         custom_components = {}
 
         if self._custom_diffusion is not None:
@@ -780,7 +1065,17 @@ class GenerativeModel:
 
         return custom_components
 
-    def load(self, path: str, override: bool = True, unsafe: bool = False):
+    def load(self, path: str, override: bool = True, unsafe: bool = False) -> None:
+        """Loads a saved model from the specified path.
+
+        Args:
+            path: Path to the saved model file.
+            override: If True, overwrites the current sampler with the saved one.
+            unsafe: If True, allows loading custom code components (potentially unsafe).
+
+        Raises:
+            RuntimeError: If the model state dictionary cannot be loaded properly.
+        """
         self._model = None
 
         checkpoint = torch.load(path)
@@ -794,33 +1089,47 @@ class GenerativeModel:
             self._rebuild_sampler(checkpoint, unsafe=unsafe)
 
         self._stored_labels = checkpoint.get('stored_labels')
-        self._num_classes = len(
-            self.stored_labels) if self.stored_labels is not None else None
+        self._num_classes = (
+            len(self.stored_labels) if self.stored_labels is not None else None
+        )
         self._label_map = checkpoint.get('label_map')
 
-        checkpoint_channels = checkpoint.get(
-            'num_channels', 1)  # Default to grayscale
+        # Default to grayscale if channels not specified
+        checkpoint_channels = checkpoint.get('num_channels', 1)
         self._shape = checkpoint.get('shape', (32, 32))
 
-        self._build_default_model(shape=(checkpoint_channels, *self.shape))
+        self._build_default_model(shape=(checkpoint_channels, *self._shape))
 
         try:
-            # Cargar solo las claves que existen en ambos modelos
+            # Load only keys that exist in both models
             model_dict = self.model.state_dict()
-            # Filtrar las claves del checkpoint que existen en el modelo actual
+            # Filter checkpoint keys that exist in the current model
             pretrained_dict = {
-                k: v for k, v in checkpoint['model_state'].items() if k in model_dict}
+                k: v
+                for k, v in checkpoint['model_state'].items()
+                if k in model_dict
+            }
             model_dict.update(pretrained_dict)
             self.model.load_state_dict(model_dict, strict=False)
-        except RuntimeError as e:
+        except RuntimeError as original_error:
             try:
-                # Intentar con las claves sin "module."
+                # Try with keys without "module." prefix (happens with DataParallel)
                 new_state_dict = {
-                    k.replace('module.', ''): v for k, v in checkpoint['model_state'].items()}
+                    k.replace('module.', ''): v
+                    for k, v in checkpoint['model_state'].items()
+                }
                 model_dict = self.model.state_dict()
                 pretrained_dict = {
-                    k: v for k, v in new_state_dict.items() if k in model_dict}
+                    k: v
+                    for k, v in new_state_dict.items()
+                    if k in model_dict
+                }
                 model_dict.update(pretrained_dict)
                 self.model.load_state_dict(model_dict, strict=False)
-            except RuntimeError as e2:
-                print(f"Warning: Failed to load model state with error: {e}")
+            except RuntimeError as secondary_error:
+                # Log both errors for better debugging
+                error_msg = (
+                    f"Failed to load model state. Original error: {original_error}. "
+                    f"Secondary error: {secondary_error}"
+                )
+                print(f"Warning: {error_msg}")

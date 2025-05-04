@@ -1,15 +1,99 @@
-# TODO
+# Diffusion-Based Image Generation
 
+## Overview
 
+This project implements diffusion-based generative models for image synthesis. It provides a comprehensive framework for training and using diffusion models, with support for various diffusion processes, noise schedules, and sampling methods.
 
-## PAPER PARA SABER LOS PARAMETROS OPTIMOS DE B_min y B_max EN RUIDO LINEAL
-Aquí está el enlace al paper original de DDPM (Denoising Diffusion Probabilistic Models) por Ho et al. (2020) donde se establecen estos valores como punto de referencia:
-https://arxiv.org/abs/2006.11239
-En la sección 4 "Experiments", específicamente en la página 6, los autores describen su configuración:
+## Features
 
-"We use a linear variance schedule from β₁ = 10⁻⁴ to βₜ = 0.02"
+- **Multiple Diffusion Processes**: Support for Variance Exploding (VE), Variance Preserving (VP), and other diffusion types
+- **Customizable Noise Schedules**: Linear, Cosine, and custom noise schedules
+- **Various Samplers**: Euler-Maruyama, Exponential Integrator, ODE Probability Flow, and Predictor-Corrector samplers
+- **Advanced Generation Capabilities**:
+  - Unconditional image generation
+  - Class-conditional image generation
+  - Image colorization
+  - Image inpainting/imputation
+- **Interactive Dashboard**: Built with Streamlit for easy model interaction
 
-También puedes consultar el paper "Improved Denoising Diffusion Probabilistic Models" por Nichol y Dhariwal (2021), que realizó un estudio más exhaustivo sobre estos parámetros:
-https://arxiv.org/abs/2102.09672
-En este segundo paper, los autores experimentan con diferentes programaciones de ruido, pero confirman que el rango de valores similar al del paper original funciona bien como punto de partida.
-El código de referencia original de los autores también implementa estos valores y está disponible en GitHub.
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/HectorTablero/image-gen.git
+cd image-gen
+pip install -e .
+```
+
+## Usage
+
+### Basic Generation
+
+```python
+from image_gen.base import GenerativeModel
+
+# Load a pre-trained model
+model = GenerativeModel.load("path/to/model.pt")
+
+# Generate images
+images = model.generate(num_images=4, n_steps=500, seed=42)
+```
+
+### Colorization
+
+```python
+# Colorize a grayscale image
+colorized = model.colorize(grayscale_image, n_steps=500)
+```
+
+### Image Inpainting
+
+```python
+# Perform inpainting with a mask
+inpainted = model.imputation(image, mask, n_steps=500)
+```
+
+## Interactive Dashboard
+
+Run the dashboard to interact with your models:
+
+```bash
+python dashboard.py
+```
+
+## Documentation
+
+The project includes automatically generated documentation. To view it locally:
+
+```bash
+# Build the documentation
+mkdocs build
+
+# Serve the documentation locally
+mkdocs serve
+```
+
+A more comprehensive version of the documentation is available at [https://deepwiki.com/HectorTablero/image-gen](https://deepwiki.com/HectorTablero/image-gen)
+
+## Examples
+
+Check the `examples/` directory for Jupyter notebooks demonstrating different aspects of the framework:
+
+- `getting_started.ipynb`: Basic introduction to the framework
+- `diffusers.ipynb`: Working with different diffusion processes
+- `noise_schedulers.ipynb`: Exploring various noise schedules
+- `samplers.ipynb`: Comparing different sampling methods
+- `colorization.ipynb`: Image colorization examples
+- `imputation.ipynb`: Image inpainting examples
+- `class_conditioning.ipynb`: Class-conditional generation
+- `evaluation.ipynb`: Evaluating model performance
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Authors
+
+- Héctor Tablero Díaz - [hector.tablerodiaz@gmail.com](mailto:hector.tablerodiaz@gmail.com)
+- Álvaro Martínez Gamo - [alva00003@gmail.com](mailto:alva00003@gmail.com)

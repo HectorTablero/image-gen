@@ -1,25 +1,61 @@
-import dill.source
-import ast
-import inspect
-from types import FunctionType
-from typing import Optional
-import re
+"""Utility module for class and function manipulation and dynamic loading.
 
-# Imports for the custom class wrapper
+This module provides utilities for extracting class structure, generating source code,
+and dynamically loading custom classes with safety measures.
+"""
+
+# Standard library imports
+import ast
+import builtins
+import inspect
+import re
+from types import FunctionType
+from typing import Dict, List, Optional, Tuple, Union
+
+# Third-party imports
+import dill.source
+import numpy as np
 import torch
 import torchvision
-import numpy as np
-from tqdm.autonotebook import tqdm
 import typing
-from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, SubVariancePreserving
-from .samplers import BaseSampler, EulerMaruyama, PredictorCorrector, ODEProbabilityFlow, ExponentialIntegrator
-from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
-from .metrics import BaseMetric, BitsPerDimension, FrechetInceptionDistance, InceptionScore
-import builtins
+from tqdm.autonotebook import tqdm
+
+# Local application imports
+from .diffusion import (
+    BaseDiffusion,
+    SubVariancePreserving,
+    VarianceExploding,
+    VariancePreserving,
+)
+from .metrics import (
+    BaseMetric,
+    BitsPerDimension,
+    FrechetInceptionDistance,
+    InceptionScore,
+)
+from .noise import (
+    BaseNoiseSchedule,
+    CosineNoiseSchedule,
+    LinearNoiseSchedule,
+)
+from .samplers import (
+    BaseSampler,
+    EulerMaruyama,
+    ExponentialIntegrator,
+    ODEProbabilityFlow,
+    PredictorCorrector,
+)
 
 
-def _get_function_source(func: FunctionType) -> str:
-    """Get function source with decorators using dill"""
+def _get_function_source(func: FunctionType) -> Optional[str]:
+    """Gets function source code with decorators using dill.
+
+    Args:
+        func: The function to extract source code from.
+
+    Returns:
+        The source code as a string, or None if extraction fails.
+    """
     try:
         while hasattr(func, '__wrapped__'):
             func = func.__wrapped__
@@ -28,8 +64,19 @@ def _get_function_source(func: FunctionType) -> str:
         return None
 
 
-def _get_class_structure(cls: type) -> dict:
-    """Extract class structure including magic methods and properties"""
+def _get_class_structure(cls: type) -> Dict:
+    """Extracts class structure including magic methods and properties.
+
+    Args:
+        cls: The class to analyze.
+
+    Returns:
+        Dictionary containing the class structure with attributes, methods,
+        and properties.
+
+    Raises:
+        TypeError: If the input is not a class.
+    """
     if not inspect.isclass(cls):
         raise TypeError("Input must be a class")
 
@@ -50,7 +97,7 @@ def _get_class_structure(cls: type) -> dict:
             if attr.fset:
                 prop_info['setter'] = _get_function_source(attr.fset)
             if attr.fdel:
-                prop_info['deletter'] = _get_function_source(attr.fdel)
+                prop_info['deleter'] = _get_function_source(attr.fdel)
             structure['properties'][name] = prop_info
 
         # Handle methods (including magic methods)
@@ -77,8 +124,15 @@ def _get_class_structure(cls: type) -> dict:
     return structure
 
 
-def _generate_class_source(structure: dict) -> str:
-    """Generate class source code from structure"""
+def _generate_class_source(structure: Dict) -> str:
+    """Generates class source code from structure.
+
+    Args:
+        structure: Dictionary containing the class structure.
+
+    Returns:
+        The generated source code as a string.
+    """
     lines = []
 
     # Class definition
@@ -113,57 +167,64 @@ def _generate_class_source(structure: dict) -> str:
 
 
 def get_class_source(cls: type) -> str:
-    """Get the source code of a class, including its methods and properties"""
+    """Gets the source code of a class, including its methods and properties.
+
+    Args:
+        cls: The class to extract source code from.
+
+    Returns:
+        The source code as a string.
+    """
     structure = _get_class_structure(cls)
     return _generate_class_source(structure)
 
 
 class _ClassRenamer(ast.NodeTransformer):
+    """AST NodeTransformer for renaming classes."""
+
     def __init__(self, old_name: str, new_name: str):
         self.old_name = old_name
         self.new_name = new_name
         self.in_class = False
 
     def visit_ClassDef(self, node: ast.ClassDef) -> ast.ClassDef:
-        # Rename the class definition
+        """Visits and renames class definitions."""
         if node.name == self.old_name:
             node.name = self.new_name
             self.in_class = True
         else:
             self.in_class = False
 
-        # Process base classes
         node.bases = [self.visit(base) for base in node.bases]
         node.keywords = [self.visit(kw) for kw in node.keywords]
 
-        # Process body while tracking class membership
         original_in_class = self.in_class
         self.generic_visit(node)
         self.in_class = original_in_class
         return node
 
     def visit_Name(self, node: ast.Name) -> ast.Name:
-        # Handle references in type annotations and other contexts
+        """Handles references in type annotations and other contexts."""
         if node.id == self.old_name and not self.in_class:
             return ast.Name(id=self.new_name, ctx=node.ctx)
         return node
 
     def visit_Attribute(self, node: ast.Attribute) -> ast.Attribute:
-        # Handle class attribute accesses
+        """Handles class attribute accesses."""
         if isinstance(node.value, ast.Name) and node.value.id == self.old_name:
             node.value = ast.Name(id=self.new_name, ctx=ast.Load())
         self.generic_visit(node)
         return node
 
     def visit_Call(self, node: ast.Call) -> ast.Call:
-        # Handle class instantiations
+        """Handles class instantiations."""
         if isinstance(node.func, ast.Name) and node.func.id == self.old_name:
             node.func = ast.Name(id=self.new_name, ctx=ast.Load())
         self.generic_visit(node)
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
-        # Handle type annotations in arguments
+        """Handles type annotations in arguments."""
         for arg in node.args.args:
             if arg.annotation:
                 arg.annotation = self.visit(arg.annotation)
@@ -174,7 +235,16 @@ class _ClassRenamer(ast.NodeTransformer):
 
 
 def _rename_class(source_code: str, old_name: str, new_name: str) -> str:
-    """Rename a class in the source code and add a property to return the old name"""
+    """Renames a class in the source code and adds a property to return the old name.
+
+    Args:
+        source_code: The source code containing the class.
+        old_name: The original class name.
+        new_name: The new class name.
+
+    Returns:
+        The modified source code as a string.
+    """
     tree = ast.parse(source_code)
     transformer = _ClassRenamer(old_name, new_name)
     new_tree = transformer.visit(tree)
@@ -188,6 +258,8 @@ def _rename_class(source_code: str, old_name: str, new_name: str) -> str:
 
 
 class CustomClassWrapper:
+    """Wrapper for dynamically loading and managing custom classes."""
+
     def __init__(self, code: str, *args, class_name: Optional[str] = None, limit_globals: bool = True, **kwargs):
         if class_name is None:
             pattern = r"class\s+(\w+)\s*\("
