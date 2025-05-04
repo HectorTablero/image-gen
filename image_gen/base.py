@@ -1,6 +1,8 @@
 from .diffusion import BaseDiffusion, VarianceExploding, VariancePreserving, SubVariancePreserving
 from .samplers import BaseSampler, EulerMaruyama, ExponentialIntegrator, ODEProbabilityFlow, PredictorCorrector
 from .noise import BaseNoiseSchedule, LinearNoiseSchedule, CosineNoiseSchedule
+from .metrics import BaseMetric, BitsPerDimension, FrechetInceptionDistance, InceptionScore
+from .utils import CustomClassWrapper, get_class_source
 from .score_model import ScoreNet
 from typing import Callable, Optional, Union, Literal, List, Tuple, Iterable, Dict, Any
 import torch
@@ -10,41 +12,79 @@ from tqdm.autonotebook import tqdm
 import warnings
 
 
-MODEL_VERSION = 2
+MODEL_VERSION = 3
 
 
 class GenerativeModel:
     DIFFUSION_MAP = {
+        "variance exploding": VarianceExploding,
+        "varianceexploding": VarianceExploding,
         "ve": VarianceExploding,
+        "variance preserving": VariancePreserving,
+        "variancepreserving": VariancePreserving,
         "vp": VariancePreserving,
+        "sub-variance preserving": SubVariancePreserving,
+        "sub variance preserving": SubVariancePreserving,
+        "subvariancepreserving": SubVariancePreserving,
         "sub-vp": SubVariancePreserving,
+        "subvp": SubVariancePreserving,
         "svp": SubVariancePreserving,
     }
     NOISE_SCHEDULE_MAP = {
+        "linear noise schedule": LinearNoiseSchedule,
+        "linearnoiseschedule": LinearNoiseSchedule,
         "linear": LinearNoiseSchedule,
         "lin": LinearNoiseSchedule,
+        "l": LinearNoiseSchedule,
+        "cosine noise schedule": CosineNoiseSchedule,
+        "cosinenoiseschedule": CosineNoiseSchedule,
         "cosine": CosineNoiseSchedule,
         "cos": CosineNoiseSchedule,
+        "c": CosineNoiseSchedule,
     }
     SAMPLER_MAP = {
         "euler-maruyama": EulerMaruyama,
+        "euler maruyama": EulerMaruyama,
+        "eulermaruyama": EulerMaruyama,
         "euler": EulerMaruyama,
         "em": EulerMaruyama,
+        "exponential integrator": ExponentialIntegrator,
+        "exponentialintegrator": ExponentialIntegrator,
         "exponential": ExponentialIntegrator,
         "exp": ExponentialIntegrator,
+        "ode probability flow": ODEProbabilityFlow,
+        "odeprobabilityflow": ODEProbabilityFlow,
+        "ode flow": ODEProbabilityFlow,
         "ode": ODEProbabilityFlow,
         "predictor-corrector": PredictorCorrector,
+        "predictor corrector": PredictorCorrector,
+        "predictorcorrector": PredictorCorrector,
         "pred": PredictorCorrector,
+    }
+    METRIC_MAP = {
+        "bits per dimension": BitsPerDimension,
+        "bitsperdimension": BitsPerDimension,
+        "bpd": BitsPerDimension,
+        "fréchet inception distance": FrechetInceptionDistance,
+        "frechet inception distance": FrechetInceptionDistance,
+        "frechetinceptiondistance": FrechetInceptionDistance,
+        "frechet": FrechetInceptionDistance,
+        "fréchet": FrechetInceptionDistance,
+        "fid": FrechetInceptionDistance,
+        "inception score": InceptionScore,
+        "inceptionscore": InceptionScore,
+        "inception": InceptionScore,
+        "is": InceptionScore,
     }
 
     def __init__(self,
-                diffusion: Optional[Union[BaseDiffusion, type,
-                                        Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
-                sampler: Optional[Union[BaseSampler, type,
-                                        Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
-                noise_schedule: Optional[Union[BaseNoiseSchedule,
+                 diffusion: Optional[Union[BaseDiffusion, type,
+                                           Literal["ve", "vp", "sub-vp", "svp"]]] = "ve",
+                 sampler: Optional[Union[BaseSampler, type,
+                                         Literal["euler-maruyama", "euler", "em", "exponential", "exp", "ode", "predictor-corrector", "pred"]]] = "euler-maruyama",
+                 noise_schedule: Optional[Union[BaseNoiseSchedule,
                                                 type, Literal["linear", "lin", "cosine", "cos"]]] = None,
-                verbose: bool = True) -> None:
+                 verbose: bool = True) -> None:
         self._model = None
         self._verbose = verbose
         self._num_classes = None  # Initialize this attribute
@@ -119,6 +159,10 @@ class GenerativeModel:
 
         self._num_channels = None
         self._input_shape = None
+
+        self._custom_sampler = None
+        self._custom_diffusion = None
+        self._custom_schedule = None
 
     @property
     def device(self) -> torch.device:
@@ -355,7 +399,32 @@ class GenerativeModel:
             for numeric_label, string_label in zip(self.stored_labels, labels)
         }
 
-    def class_conditional_score(self, class_labels: Union[int, Tensor], num_samples: int, guidance_scale: float = 3.0) -> Callable[[Tensor, Tensor], Tensor]:
+    def score(self, real: Tensor, generated: Tensor, metrics: List[Union[str, BaseMetric]] = ["bpd", "fid", "is"], *args, **kwargs) -> Dict[str, float]:
+        if not isinstance(metrics, list) or len(metrics) == 0:
+            raise Exception(
+                "Scores must be a non-empty list.")
+
+        calculated_scores = {}
+        for score in metrics:
+            # Instantiate the class
+            if isinstance(score, str) and score.lower() in GenerativeModel.METRIC_MAP:
+                score = GenerativeModel.METRIC_MAP[score.lower()](self)
+            elif isinstance(score, type):
+                score = score(self)
+
+            if not isinstance(score, BaseMetric):
+                warnings.warn(f'"{score}" is not a metric, skipping...')
+                continue
+
+            if score.name in calculated_scores:
+                warnings.warn(
+                    f'A score with the name of "{score.name}" has already been calculated, but it will be overwritten.')
+            calculated_scores[score.name] = score(
+                real, generated, *args, **kwargs)
+
+        return calculated_scores
+
+    def _class_conditional_score(self, class_labels: Union[int, Tensor], num_samples: int, guidance_scale: float = 3.0) -> Callable[[Tensor, Tensor], Tensor]:
         if class_labels is None:
             return self.model
 
@@ -430,7 +499,7 @@ class GenerativeModel:
             raise ValueError(
                 "Model not initialized. Please load or train the model first.")
 
-        score_func = self.class_conditional_score(
+        score_func = self._class_conditional_score(
             class_labels, num_samples, guidance_scale=guidance_scale)
 
         x_T = torch.randn(num_samples, self.num_channels, *
@@ -497,7 +566,7 @@ class GenerativeModel:
                 alpha = t.item() / n_steps
                 return enforced_rgb * (1 - alpha) + x_t * alpha
 
-        score_func = self.class_conditional_score(class_labels, x.shape[0])
+        score_func = self._class_conditional_score(class_labels, x.shape[0])
 
         self.model.eval()
         with torch.no_grad():
@@ -572,7 +641,7 @@ class GenerativeModel:
             with torch.no_grad():
                 return torch.where(preserve_mask, x_normalized, x_t)
 
-        score_func = self.class_conditional_score(class_labels, batch_size)
+        score_func = self._class_conditional_score(class_labels, batch_size)
 
         self.model.eval()
         with torch.no_grad():
@@ -610,71 +679,119 @@ class GenerativeModel:
 
         if hasattr(self.diffusion, 'config'):
             save_data['diffusion_config'] = self.diffusion.config()
+        if save_data["diffusion_type"] not in GenerativeModel.DIFFUSION_MAP:
+            save_data["diffusion_code"] = get_class_source(
+                self.diffusion.__class__)
 
         if self.diffusion.NEEDS_NOISE_SCHEDULE:
             save_data['noise_schedule_type'] = self.diffusion.schedule.__class__.__name__.lower()
             if hasattr(self.diffusion.schedule, 'config'):
                 save_data['noise_schedule_config'] = self.diffusion.schedule.config()
+            if save_data["noise_schedule_type"] not in GenerativeModel.NOISE_SCHEDULE_MAP:
+                save_data["noise_schedule_code"] = get_class_source(
+                    self.noise_schedule.__class__)
+
+        if hasattr(self.sampler, 'config'):
+            save_data['sampler_config'] = self.sampler.config()
+        if save_data["sampler_type"] not in GenerativeModel.SAMPLER_MAP:
+            save_data["sampler_code"] = get_class_source(
+                self.sampler.__class__)
 
         torch.save(save_data, path)
 
-    def _rebuild_diffusion(self, checkpoint: Dict[str, Any]):
-        diffusion_map = {
-            VarianceExploding.__name__.lower(): VarianceExploding,
-            VariancePreserving.__name__.lower(): VariancePreserving,
-            SubVariancePreserving.__name__.lower(): SubVariancePreserving,
-        }
+    def _rebuild_diffusion(self, checkpoint: Dict[str, Any], unsafe: bool = False):
+        default_diffusion = VarianceExploding.__name__.lower()
+        diffusion_type = checkpoint.get("diffusion_type", default_diffusion)
+        diffusion_cls = GenerativeModel.DIFFUSION_MAP.get(diffusion_type)
 
-        diff_type = checkpoint.get('diffusion_type', 've')
-        diffusion_cls = diffusion_map[diff_type]
+        if diffusion_cls is None:
+            diffusion_code = checkpoint.get("diffusion_code")
+            if diffusion_type != default_diffusion and diffusion_code is not None:
+                if unsafe:
+                    self._custom_diffusion = diffusion_code
+                    diffusion_cls = lambda *args, **kwargs: CustomClassWrapper(
+                        diffusion_code, *args, **kwargs)
+                    warnings.warn(
+                        "This model has been instantiated with a custom diffuser. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                else:
+                    raise Exception(
+                        "The saved model uses a custom diffuser, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
 
-        schedule = None
-        if diffusion_cls.NEEDS_NOISE_SCHEDULE:
-            schedule = self._rebuild_noise_schedule(checkpoint)
-
+        schedule = self._rebuild_noise_schedule(checkpoint, unsafe=unsafe)
         config = checkpoint.get('diffusion_config', {})
+        self._diffusion = diffusion_cls(schedule, **config)
 
-        if diffusion_cls.NEEDS_NOISE_SCHEDULE:
-            self._diffusion = diffusion_cls(schedule, **config)
-        else:
-            self._diffusion = diffusion_cls(**config)
+    def _rebuild_noise_schedule(self, checkpoint: Dict[str, Any], unsafe: bool = False) -> BaseNoiseSchedule:
+        default_schedule = LinearNoiseSchedule.__name__.lower()
+        schedule_type = checkpoint.get("noise_schedule_type", default_schedule)
+        schedule_cls = GenerativeModel.NOISE_SCHEDULE_MAP.get(schedule_type)
 
-    def _rebuild_noise_schedule(self, checkpoint: Dict[str, Any]) -> BaseNoiseSchedule:
-        schedule_map = {
-            LinearNoiseSchedule.__name__.lower(): LinearNoiseSchedule,
-            CosineNoiseSchedule.__name__.lower(): CosineNoiseSchedule,
-        }
+        if schedule_cls is None:
+            schedule_code = checkpoint.get("noise_schedule_code")
+            if schedule_type != default_schedule and schedule_code is not None:
+                if unsafe:
+                    self._custom_schedule = schedule_code
+                    schedule_cls = lambda *args, **kwargs: CustomClassWrapper(
+                        schedule_code, *args, **kwargs)
+                    warnings.warn(
+                        "This model has been instantiated with a custom schedule. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                else:
+                    raise Exception(
+                        "The saved model uses a custom schedule, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
 
-        schedule_type = checkpoint.get('noise_schedule_type', 'linear')
-        schedule_cls = schedule_map[schedule_type]
         config = checkpoint.get('noise_schedule_config', {})
         return schedule_cls(**config)
 
-    def _rebuild_sampler(self, checkpoint: Dict[str, Any]):
-        sampler_map = {
-            EulerMaruyama.__name__.lower(): EulerMaruyama,
-            ExponentialIntegrator.__name__.lower(): ExponentialIntegrator,
-            ODEProbabilityFlow.__name__.lower(): ODEProbabilityFlow,
-            PredictorCorrector.__name__.lower(): PredictorCorrector,
-        }
+    def _rebuild_sampler(self, checkpoint: Dict[str, Any], unsafe: bool = False):
+        default_sampler = EulerMaruyama.__name__.lower()
+        sampler_type = checkpoint.get("sampler_type", default_sampler)
+        sampler_cls = GenerativeModel.SAMPLER_MAP.get(sampler_type)
 
-        sampler_type = checkpoint.get('sampler_type', 'euler-maruyama')
-        sampler_cls = sampler_map[sampler_type]
-        if self.sampler.__class__ != sampler_cls:
+        if sampler_cls is None:
+            sampler_code = checkpoint.get("sampler_code")
+            if sampler_type != default_sampler and sampler_code is not None:
+                if unsafe:
+                    self._custom_sampler = sampler_code
+                    sampler_cls = lambda *args, **kwargs: CustomClassWrapper(
+                        sampler_code, *args, **kwargs)
+                    warnings.warn(
+                        "This model has been instantiated with a custom sampler. Please verify the safety of the code before calling any methods of the GenerativeModel. It can be viewed with GenerativeModel.show_custom_code(), and won't be run until needed.")
+                else:
+                    raise Exception(
+                        "The saved model uses a custom sampler, which is not allowed for safety reasons. If you want to load the custom class, use model.load(path, override = True, unsafe = True).")
+
+        if self._sampler.__class__ != sampler_cls:
             warnings.warn(
-                f"The model was initialized with sampler {self.sampler.__class__.__name__}, but the saved model has {sampler_cls.__name__}. The sampler will be set to {sampler_cls.__name__}. If you don't want this behaviour, use model.load(path, override = False)."
+                f"The model was initialized with sampler {self._sampler.__class__.__name__}, but the saved model has {sampler_cls.__name__}. The sampler will be set to {sampler_cls.__name__}. If you don't want this behaviour, use model.load(path, override = False)."
             )
-        self._sampler = sampler_cls(self.diffusion, verbose=self._verbose)
+        config = checkpoint.get('sampler_config', {})
+        self._sampler = sampler_cls(
+            self.diffusion, **config, verbose=self._verbose)
 
-    def load(self, path: str, override: bool = True):
+    def get_custom_code(self) -> dict:
+        custom_components = {}
+
+        if self._custom_diffusion is not None:
+            custom_components["diffusion"] = self._custom_diffusion
+        if self._custom_schedule is not None:
+            custom_components["noise_schedule"] = self._custom_schedule
+        if self._custom_sampler is not None:
+            custom_components["sampler"] = self._custom_sampler
+
+        return custom_components
+
+    def load(self, path: str, override: bool = True, unsafe: bool = False):
         self._model = None
 
         checkpoint = torch.load(path)
         self._version = checkpoint.get('model_version')
 
-        self._rebuild_diffusion(checkpoint)
+        self._custom_sampler = None
+        self._custom_diffusion = None
+        self._custom_schedule = None
+        self._rebuild_diffusion(checkpoint, unsafe=unsafe)
         if override:
-            self._rebuild_sampler(checkpoint)
+            self._rebuild_sampler(checkpoint, unsafe=unsafe)
 
         self._stored_labels = checkpoint.get('stored_labels')
         self._num_classes = len(
@@ -691,7 +808,8 @@ class GenerativeModel:
             # Cargar solo las claves que existen en ambos modelos
             model_dict = self.model.state_dict()
             # Filtrar las claves del checkpoint que existen en el modelo actual
-            pretrained_dict = {k: v for k, v in checkpoint['model_state'].items() if k in model_dict}
+            pretrained_dict = {
+                k: v for k, v in checkpoint['model_state'].items() if k in model_dict}
             model_dict.update(pretrained_dict)
             self.model.load_state_dict(model_dict, strict=False)
         except RuntimeError as e:
@@ -700,7 +818,8 @@ class GenerativeModel:
                 new_state_dict = {
                     k.replace('module.', ''): v for k, v in checkpoint['model_state'].items()}
                 model_dict = self.model.state_dict()
-                pretrained_dict = {k: v for k, v in new_state_dict.items() if k in model_dict}
+                pretrained_dict = {
+                    k: v for k, v in new_state_dict.items() if k in model_dict}
                 model_dict.update(pretrained_dict)
                 self.model.load_state_dict(model_dict, strict=False)
             except RuntimeError as e2:

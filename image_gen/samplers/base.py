@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Tuple
-import torch
 from torch import Tensor
 
 
@@ -24,5 +23,15 @@ class BaseSampler(ABC):
                  ) -> Tuple[Tensor, Tensor]:
         ...
 
+    def config(self) -> dict:
+        return {}
+
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}()"
+        config = self.config()
+        params = ", ".join(f"{k}: {v}" for k, v in config.items())
+        return f"{self._class_name}({params})"
+
+    @property
+    def _class_name(self) -> str:
+        # This will be automatically overridden in custom classes made by users
+        return self.__class__.__name__

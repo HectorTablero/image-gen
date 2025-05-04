@@ -13,6 +13,8 @@ import sys
 sys.path.append('./..')
 
 
+# TODO: Ask for confirmation before unsafe loading
+
 NONE_LABEL = "(unset)"
 
 
@@ -56,6 +58,12 @@ def add_additional_info():
             st.write(i)
 
 
+def _get_class_name(obj: type) -> str:
+    if hasattr(obj, "_class_name"):
+        return obj._class_name
+    return obj.__class__.__name__
+
+
 def model_selection():
     st.title("Model Management")
 
@@ -88,7 +96,7 @@ def model_selection():
                     # Verify and load the model
                     with st.spinner(f"Loading {uploaded_file.name}..."):
                         model = GenerativeModel(verbose=False)
-                        model.load(save_path)
+                        model.load(save_path, unsafe=True)
                         st.session_state.model = model
                         st.session_state.model_name = ".".join(
                             uploaded_file.name.split(".")[:-1])
@@ -125,7 +133,7 @@ def model_selection():
                 model_path = os.path.join(model_dir, selected_model)
                 try:
                     model = GenerativeModel(verbose=False)
-                    model.load(model_path)
+                    model.load(model_path, unsafe=True)
                     st.session_state.model = model
                     st.session_state.model_name = ".".join(
                         selected_model.split(".")[:-1])
@@ -156,14 +164,18 @@ def model_selection():
             sampler_classes = [
                 "EulerMaruyama", "ExponentialIntegrator", "ODEProbabilityFlow", "PredictorCorrector"]
 
-            current_sampler = st.session_state.model.sampler.__class__.__name__
+            current_sampler = _get_class_name(st.session_state.model.sampler)
+
+            index = sampler_classes.index(
+                current_sampler) if current_sampler in sampler_classes else 4
+            if index == 4:
+                sampler_options["Custom"] = "custom"
 
             # Create select box with current sampler as default
             selected_sampler = st.selectbox(
                 "Sampler Type",
                 options=list(sampler_options.keys()),
-                index=sampler_classes.index(current_sampler)
-                if current_sampler in sampler_classes else 0,
+                index=index,
                 key="sampler_select"
             )
 
@@ -186,17 +198,17 @@ def model_selection():
                 "Model Name": st.session_state.model_name,
                 "Number of Channels": st.session_state.model.num_channels,
                 "Input Shape": st.session_state.model.shape,
-                "Sampler Type": type(st.session_state.model.sampler).__name__,
+                "Sampler Type": _get_class_name(st.session_state.model.sampler),
                 "Diffusion Type": {
-                    type(
-                        st.session_state.model.diffusion).__name__: st.session_state.model.diffusion.config()
+                    _get_class_name(
+                        st.session_state.model.diffusion): st.session_state.model.diffusion.config()
                 }
             }
 
             if st.session_state.model.diffusion.NEEDS_NOISE_SCHEDULE:
                 info["Noise Schedule"] = {
-                    type(
-                        st.session_state.model.diffusion.schedule).__name__: st.session_state.model.diffusion.schedule.config()
+                    _get_class_name(
+                        st.session_state.model.diffusion.schedule): st.session_state.model.diffusion.schedule.config()
                 }
             if st.session_state.model._label_map is not None:
                 info["Labels"] = ", ".join([str(i) for i in
@@ -696,7 +708,7 @@ def main():
     if 'model' not in st.session_state:
         st.session_state.model = None
     else:
-        if st.session_state.model._label_map is None and len(st.session_state.model.stored_labels) > 1:
+        if st.session_state.model is not None and st.session_state.model._label_map is None and len(st.session_state.model.stored_labels) > 1:
             st.session_state.model.set_labels(
                 st.session_state.model.stored_labels)
     if 'model_name' not in st.session_state:

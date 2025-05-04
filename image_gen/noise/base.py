@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from torch import Tensor
-from typing import Optional
 
 
 class BaseNoiseSchedule(ABC):
@@ -22,4 +21,9 @@ class BaseNoiseSchedule(ABC):
     def __str__(self) -> str:
         config = self.config()
         params = ", ".join(f"{k}: {v}" for k, v in config.items())
-        return f"{self.__class__.__name__}({params})"
+        return f"{self._class_name}({params})"
+
+    @property
+    def _class_name(self) -> str:
+        # This will be automatically overridden in custom classes made by users
+        return self.__class__.__name__
