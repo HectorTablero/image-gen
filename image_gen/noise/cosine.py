@@ -22,23 +22,21 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
 
     def __init__(
         self,
-        *args,
+        *_,
         s: float = 0.008,
         beta_min: float = 1e-4,
         beta_max: float = 20.0,
-        **kwargs
+        **__
     ):
         """Initialize the cosine noise schedule.
 
         Args:
-            *args: Additional positional arguments (not used).
             s: Small offset to prevent alpha_bar(t) from being too small near t=1.
                 Defaults to 0.008.
             beta_min: Minimum noise level for numerical stability.
                 Defaults to 0.0001.
             beta_max: Maximum noise level for numerical stability.
                 Defaults to 20.0.
-            **kwargs: Additional keyword arguments (not used).
         """
         self.s = s
         self.min_beta = beta_min
@@ -57,7 +55,7 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
         """
         return torch.cos((t + self.s) / (1.0 + self.s) * math.pi * 0.5) ** 2
 
-    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def __call__(self, t: Tensor, *_, **__) -> Tensor:
         """Compute beta(t) at timestep t.
 
         For cosine schedule, beta(t) is derived from the derivative of alpha_bar(t):
@@ -65,8 +63,6 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
 
         Args:
             t: Tensor of timesteps in [0, 1] range.
-            *args: Additional positional arguments (not used).
-            **kwargs: Additional keyword arguments (not used).
 
         Returns:
             Tensor: Beta values at specified timesteps.
@@ -91,7 +87,7 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
 
         return beta_t
 
-    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def integral_beta(self, t: Tensor, *_, **__) -> Tensor:
         """Compute the integral of beta from 0 to t.
 
         For cosine schedule, this equals -log(alpha_bar(t)) which represents
@@ -99,8 +95,6 @@ class CosineNoiseSchedule(BaseNoiseSchedule):
 
         Args:
             t: Tensor of timesteps in [0, 1] range.
-            *args: Additional positional arguments (not used).
-            **kwargs: Additional keyword arguments (not used).
 
         Returns:
             Tensor: Integrated beta values from 0 to t.

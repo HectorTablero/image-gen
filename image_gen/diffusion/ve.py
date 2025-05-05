@@ -8,7 +8,7 @@ generation tasks.
 import numpy as np
 import torch
 from torch import Tensor
-from typing import Tuple
+from typing import Tuple, Any
 
 from .base import BaseDiffusion
 from ..noise import BaseNoiseSchedule
@@ -24,23 +24,19 @@ class VarianceExplodingSchedule(BaseNoiseSchedule):
         sigma: Base sigma value that controls the rate of variance explosion.
     """
 
-    def __init__(self, sigma: float, *args, **kwargs):
+    def __init__(self, sigma: float, *_, **__):
         """Initialize the variance exploding noise schedule.
 
         Args:
             sigma: Base sigma value for the schedule.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
         """
         self.sigma = sigma
 
-    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def __call__(self, t: Tensor, *_, **__) -> Tensor:
         """Calculate the noise magnitude at time t.
 
         Args:
             t: Time step tensor.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             Tensor containing noise magnitudes at time t.
@@ -49,13 +45,11 @@ class VarianceExplodingSchedule(BaseNoiseSchedule):
             self.sigma, dtype=torch.float32, device=t.device))
         return torch.sqrt(0.5 * (self.sigma ** (2 * t) - 1.0) / log_sigma)
 
-    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def integral_beta(self, t: Tensor, *_, **__) -> Tensor:
         """Calculate the integrated noise intensity up to time t.
 
         Args:
             t: Time step tensor.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             Tensor containing integrated noise values.
@@ -86,25 +80,21 @@ class VarianceExploding(BaseDiffusion):
 
     NEEDS_NOISE_SCHEDULE = False
 
-    def __init__(self, *args, sigma: float = 25.0, **kwargs):
+    def __init__(self, *_, sigma: float = 25.0, **__):
         """Initialize the variance exploding diffusion model.
 
         Args:
-            *args: Additional positional arguments.
             sigma: Base sigma value for variance control. Defaults to 25.0.
-            **kwargs: Additional keyword arguments.
         """
         super().__init__(VarianceExplodingSchedule(sigma))
 
-    def forward_sde(self, x: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_sde(self, x: Tensor, t: Tensor, *_, **__) -> Tuple[
             Tensor, Tensor]:
         """Calculate drift and diffusion for the forward SDE.
 
         Args:
             x: Input tensor representing the current state.
             t: Time steps tensor.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             Tuple of (drift, diffusion) tensors.
@@ -113,7 +103,7 @@ class VarianceExploding(BaseDiffusion):
         diffusion = (self.schedule.sigma ** t).view(-1, 1, 1, 1)
         return drift, diffusion
 
-    def forward_process(self, x0: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_process(self, x0: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[
             Tensor, Tensor]:
         """Apply the forward diffusion process.
 
@@ -132,7 +122,7 @@ class VarianceExploding(BaseDiffusion):
         return x0 + sigma * noise, noise
 
     def compute_loss(self, score: Tensor, noise: Tensor, t: Tensor,
-                     *args, **kwargs) -> Tensor:
+                     *args: Any, **kwargs: Any) -> Tensor:
         """Compute loss between predicted score and actual noise.
 
         Args:

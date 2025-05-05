@@ -4,7 +4,7 @@ This module extends the basic variance preserving diffusion model with
 a modified diffusion process that uses a different noise formulation.
 """
 
-from typing import Tuple
+from typing import Tuple, Any
 
 import torch
 from torch import Tensor
@@ -21,7 +21,7 @@ class SubVariancePreserving(BaseDiffusion):
     for the diffusion coefficient.
     """
 
-    def forward_sde(self, x: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_sde(self, x: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[
             Tensor, Tensor]:
         """Calculate drift and diffusion coefficients for forward SDE.
 
@@ -43,7 +43,7 @@ class SubVariancePreserving(BaseDiffusion):
         drift = -0.5 * beta_t * x
         return drift, diffusion
 
-    def forward_process(self, x0: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_process(self, x0: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[
             Tensor, Tensor]:
         """Apply the forward diffusion process.
 
@@ -68,7 +68,7 @@ class SubVariancePreserving(BaseDiffusion):
         return xt, noise
 
     def compute_loss(self, score: Tensor, noise: Tensor, t: Tensor,
-                     *args, **kwargs) -> Tensor:
+                     *args: Any, **kwargs: Any) -> Tensor:
         """Compute loss between predicted score and actual noise.
 
         Args:

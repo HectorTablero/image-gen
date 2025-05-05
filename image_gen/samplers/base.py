@@ -5,9 +5,11 @@ models. It defines the common interface that all samplers should implement.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Callable, Tuple
+from typing import Optional, Callable, Any
 
 from torch import Tensor
+
+from ..diffusion import BaseDiffusion
 
 
 class BaseSampler(ABC):
@@ -21,15 +23,13 @@ class BaseSampler(ABC):
         verbose: Whether to print progress information during sampling.
     """
 
-    def __init__(self, diffusion, *args, verbose: bool = True, **kwargs):
+    def __init__(self, diffusion: BaseDiffusion, *_, verbose: bool = True, **__):
         """Initialize the sampler.
 
         Args:
             diffusion: The diffusion model to sample from.
-            *args: Additional positional arguments.
             verbose: Whether to print progress information during sampling.
                 Defaults to True.
-            **kwargs: Additional keyword arguments.
         """
         self.diffusion = diffusion
         self.verbose = verbose
@@ -39,15 +39,15 @@ class BaseSampler(ABC):
             self,
             x_T: Tensor,
             score_model: Callable,
-            *args,
+            *args: Any,
             n_steps: int = 500,
             seed: Optional[int] = None,
             callback: Optional[Callable[[Tensor, int], None]] = None,
             callback_frequency: int = 50,
             guidance: Optional[Callable[[
                 Tensor, Tensor, Tensor], Tensor]] = None,
-            **kwargs
-    ) -> Tuple[Tensor, Tensor]:
+            **kwargs: Any
+    ) -> Tensor:
         """Perform the sampling process.
 
         Args:

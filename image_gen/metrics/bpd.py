@@ -1,7 +1,7 @@
 """Module for Bits Per Dimension metric implementation."""
 
 import numpy as np
-from typing import Union
+from typing import Union, Any
 
 import torch
 from torch import Tensor
@@ -23,17 +23,15 @@ class BitsPerDimension(BaseMetric):
     def __call__(
         self,
         real: Union[Tensor, torch.utils.data.Dataset],
-        _,
-        *args,
-        **kwargs
+        _generated: Any,
+        *_,
+        **__
     ) -> float:
         """Computes bits per dimension for the real data.
 
         Args:
             real: Tensor or Dataset-like object (Dataset, Subset, etc.)
-            _: Not used for BPD, included for API compatibility
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
+            _generated: Not used for BPD, included for API compatibility
 
         Returns:
             float: The computed BPD value (lower is better).

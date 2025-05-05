@@ -21,6 +21,10 @@ import warnings
 MODEL_VERSION = 3
 
 
+# TODO: For custom classes, instead of training with them directly, create
+# a wrapper class to check if they have any unallowed dependencies
+
+
 class GenerativeModel:
     """Generative model for diffusion-based image generation.
 
@@ -513,7 +517,7 @@ class GenerativeModel:
 
     def score(self, real: Tensor, generated: Tensor,
               metrics: List[Union[str, BaseMetric]] = ["bpd", "fid", "is"],
-              *args, **kwargs) -> Dict[str, float]:
+              *args: Any, **kwargs: Any) -> Dict[str, float]:
         """Evaluates the model using various metrics.
 
         Args:

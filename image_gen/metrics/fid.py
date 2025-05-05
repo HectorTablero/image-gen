@@ -32,7 +32,7 @@ class FrechetInceptionDistance(BaseMetric):
         inception: Pretrained Inception-v3 model used for feature extraction.
     """
 
-    def __init__(self, model: "GenerativeModel", dims: int = 2048):
+    def __init__(self, model: GenerativeModel, dims: int = 2048):
         """Initialize the FID metric with model and feature dimensions.
 
         Args:
@@ -151,8 +151,8 @@ class FrechetInceptionDistance(BaseMetric):
         self,
         real: Union[Tensor, torch.utils.data.Dataset],
         generated: Union[Tensor, torch.utils.data.Dataset],
-        *args,
-        **kwargs
+        *_,
+        **__
     ) -> float:
         """Compute the FID score between real and generated images.
 
@@ -160,8 +160,6 @@ class FrechetInceptionDistance(BaseMetric):
             real: Tensor or Dataset-like containing real images (B, C, H, W).
             generated: Tensor or Dataset-like containing generated images 
                       (B, C, H, W).
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             The computed FID score (lower is better).

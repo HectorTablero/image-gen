@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from typing import Tuple, TYPE_CHECKING, Union
+from typing import Tuple, TYPE_CHECKING, Union, Any
 
 import torch
 import torch.nn.functional as F
@@ -29,7 +29,7 @@ class InceptionScore(BaseMetric):
         inception: Pretrained Inception-v3 model.
     """
 
-    def __init__(self, model: "GenerativeModel", n_splits: int = 10):
+    def __init__(self, model: GenerativeModel, n_splits: int = 10):
         """Initialize the Inception Score metric.
 
         Args:
@@ -138,18 +138,16 @@ class InceptionScore(BaseMetric):
 
     def __call__(
         self,
-        _,
-        generated: Union[Tensor, torch.utils.data.Dataset] = None,
-        *args,
-        **kwargs
+        _real: Any,
+        generated: Union[Tensor, torch.utils.data.Dataset],
+        *_,
+        **__
     ) -> float:
         """Compute the Inception Score for generated images.
 
         Args:
-            _: Not used for IS, included for API compatibility.
+            _real: Not used for IS, included for API compatibility.
             generated: Tensor of generated images (B, C, H, W).
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             The computed Inception Score (higher is better).
@@ -157,15 +155,6 @@ class InceptionScore(BaseMetric):
         Raises:
             ValueError: If no generated images are provided.
         """
-        # Handle the case where generated is passed as a keyword argument
-        if generated is None and 'generated' in kwargs:
-            generated = kwargs['generated']
-
-        # Only generated images are used for IS
-        if generated is None:
-            raise ValueError(
-                "Generated images must be provided for Inception Score")
-
         # Move to device
         generated = generated.to(self.model.device)
 
@@ -185,8 +174,7 @@ class InceptionScore(BaseMetric):
 
     def calculate_with_std(
         self,
-        generated: Tensor,
-        batch_size: int = 32
+        generated: Tensor
     ) -> Tuple[float, float]:
         """Calculate Inception Score with standard deviation.
 
@@ -194,7 +182,6 @@ class InceptionScore(BaseMetric):
 
         Args:
             generated: Tensor of generated images.
-            batch_size: Batch size for feature extraction.
 
         Returns:
             Tuple of (mean, std) of Inception Score.

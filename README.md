@@ -59,7 +59,7 @@ inpainted = model.imputation(image, mask, n_steps=500)
 Run the dashboard to interact with your models:
 
 ```bash
-python dashboard.py
+streamlit run dashboard.py
 ```
 
 ## Documentation

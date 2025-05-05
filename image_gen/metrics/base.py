@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from torch import Tensor
 
@@ -20,7 +20,7 @@ class BaseMetric(ABC):
         model: The generative model being evaluated.
     """
 
-    def __init__(self, model: "GenerativeModel"):
+    def __init__(self, model: GenerativeModel):
         """Initialize the metric with a generative model.
 
         Args:
@@ -29,7 +29,7 @@ class BaseMetric(ABC):
         self.model = model
 
     @abstractmethod
-    def __call__(self, real: Tensor, generated: Tensor, *args, **kwargs) -> float:
+    def __call__(self, real: Tensor, generated: Tensor, *args: Any, **kwargs: Any) -> float:
         """Compute the metric value between real and generated samples.
 
         Args:

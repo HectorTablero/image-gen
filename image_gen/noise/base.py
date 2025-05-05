@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from torch import Tensor
+from typing import Any
 
 
 class BaseNoiseSchedule(ABC):
@@ -12,7 +13,7 @@ class BaseNoiseSchedule(ABC):
     """
 
     @abstractmethod
-    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def __call__(self, t: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         """Calculate noise at specific timesteps.
 
         Args:
@@ -26,7 +27,7 @@ class BaseNoiseSchedule(ABC):
         ...
 
     @abstractmethod
-    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def integral_beta(self, t: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         """Calculate the integral of the noise function up to timestep t.
 
         Args:

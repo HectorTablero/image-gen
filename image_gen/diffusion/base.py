@@ -6,7 +6,7 @@ the required abstract methods.
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Any
 
 from torch import Tensor
 
@@ -25,18 +25,16 @@ class BaseDiffusion(ABC):
 
     NEEDS_NOISE_SCHEDULE = True
 
-    def __init__(self, schedule: BaseNoiseSchedule, *args, **kwargs):
+    def __init__(self, schedule: BaseNoiseSchedule, *_, **__):
         """Initialize the diffusion model.
 
         Args:
             schedule: A noise schedule that controls noise addition over time.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
         """
         self.schedule = schedule
 
     @abstractmethod
-    def forward_sde(self, x: Tensor, t: Tensor, *args, **kwargs) -> Tuple[Tensor, Tensor]:
+    def forward_sde(self, x: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[Tensor, Tensor]:
         """Calculate drift and diffusion coefficients for forward SDE.
 
         Args:
@@ -52,7 +50,7 @@ class BaseDiffusion(ABC):
 
     @abstractmethod
     def forward_process(
-        self, x0: Tensor, t: Tensor, *args, **kwargs
+        self, x0: Tensor, t: Tensor, *args: Any, **kwargs: Any
     ) -> Tuple[Tensor, Tensor]:
         """Apply the forward diffusion process.
 
@@ -69,7 +67,7 @@ class BaseDiffusion(ABC):
 
     @abstractmethod
     def compute_loss(
-        self, score: Tensor, noise: Tensor, t: Tensor, *args, **kwargs
+        self, score: Tensor, noise: Tensor, t: Tensor, *args: Any, **kwargs: Any
     ) -> Tensor:
         """Compute loss between predicted and actual noise.
 
@@ -86,7 +84,7 @@ class BaseDiffusion(ABC):
         pass
 
     def backward_sde(
-        self, x: Tensor, t: Tensor, score: Tensor, *args, **kwargs
+        self, x: Tensor, t: Tensor, score: Tensor, *_, **__
     ) -> Tuple[Tensor, Tensor]:
         """Compute the backward SDE coefficients.
 
@@ -94,8 +92,6 @@ class BaseDiffusion(ABC):
             x: The input tensor representing current state.
             t: Time steps tensor.
             score: The score function output.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             A tuple of (drift, diffusion) tensors for the backward process.

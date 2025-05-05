@@ -5,13 +5,12 @@ is commonly used in diffusion-based generative models. It maintains a certain
 level of variance throughout the diffusion process.
 """
 
-from typing import Tuple
+from typing import Tuple, Any
 
 import torch
 from torch import Tensor
 
 from .base import BaseDiffusion
-from ..noise import BaseNoiseSchedule
 
 
 class VariancePreserving(BaseDiffusion):
@@ -22,7 +21,7 @@ class VariancePreserving(BaseDiffusion):
     diffusion-based generative models.
     """
 
-    def forward_sde(self, x: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_sde(self, x: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[
             Tensor, Tensor]:
         """Calculate drift and diffusion coefficients for forward SDE.
 
@@ -40,7 +39,7 @@ class VariancePreserving(BaseDiffusion):
         diffusion = torch.sqrt(beta_t)
         return drift, diffusion
 
-    def forward_process(self, x0: Tensor, t: Tensor, *args, **kwargs) -> Tuple[
+    def forward_process(self, x0: Tensor, t: Tensor, *args: Any, **kwargs: Any) -> Tuple[
             Tensor, Tensor]:
         """Apply the forward diffusion process.
 
@@ -65,7 +64,7 @@ class VariancePreserving(BaseDiffusion):
         return xt, noise
 
     def compute_loss(self, score: Tensor, noise: Tensor, t: Tensor,
-                     *args, **kwargs) -> Tensor:
+                     *args: Any, **kwargs: Any) -> Tensor:
         """Compute loss between predicted score and actual noise.
 
         Args:

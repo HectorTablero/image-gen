@@ -14,36 +14,32 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
 
     def __init__(
         self,
-        *args,
+        *_,
         beta_min: float = 0.0001,
         beta_max: float = 20.0,
-        **kwargs
+        **__
     ):
         """Initialize the linear noise schedule.
 
         Args:
-            *args: Additional positional arguments (not used).
             beta_min: Minimum noise value at t=0. Defaults to 0.0001.
             beta_max: Maximum noise value at t=1. Defaults to 20.0.
-            **kwargs: Additional keyword arguments (not used).
         """
         self.beta_min = beta_min
         self.beta_max = beta_max
 
-    def __call__(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def __call__(self, t: Tensor, *_, **__) -> Tensor:
         """Calculate noise at specific timesteps.
 
         Args:
             t: Tensor containing timestep values in range [0, 1].
-            *args: Additional positional arguments (not used).
-            **kwargs: Additional keyword arguments (not used).
 
         Returns:
             Tensor: Noise values corresponding to the input timesteps.
         """
         return self.beta_min + t * (self.beta_max - self.beta_min)
 
-    def integral_beta(self, t: Tensor, *args, **kwargs) -> Tensor:
+    def integral_beta(self, t: Tensor, *_, **__) -> Tensor:
         """Calculate the integral of the noise function up to timestep t.
 
         The analytical solution for the integral of a linear function
@@ -51,8 +47,6 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
 
         Args:
             t: Tensor containing timestep values in range [0, 1].
-            *args: Additional positional arguments (not used).
-            **kwargs: Additional keyword arguments (not used).
 
         Returns:
             Tensor: Integrated noise values corresponding to the input timesteps.

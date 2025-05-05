@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from matplotlib import animation
 import matplotlib.pyplot as plt
-from typing import Tuple
+from typing import Tuple, Any
 from image_gen.base import GenerativeModel
 
 
@@ -17,7 +17,7 @@ def display_evolution(
     model: GenerativeModel,
     num_samples: int = 5,
     num_steps: int = 500,
-    **kwargs
+    **kwargs: Any
 ) -> None:
     """
     Visualize the diffusion process by showing intermediate steps.
@@ -72,7 +72,7 @@ def display_evolution(
 
 
 def create_evolution_widget(
-    model: GenerativeModel, figsize: Tuple[int, int] = (6, 6), **kwargs
+    model: GenerativeModel, figsize: Tuple[int, int] = (6, 6), **kwargs: Any
 ) -> animation.FuncAnimation:
     """
     Create an interactive animation showing the diffusion process.
@@ -127,16 +127,13 @@ def create_evolution_widget(
     return anim
 
 
-def display_images(
-    images: torch.Tensor, figsize: Tuple[int, int] = (6, 6), **kwargs
-) -> None:
+def display_images(images: torch.Tensor, figsize: Tuple[int, int] = (6, 6)):
     """
     Display a grid of generated images.
 
     Args:
         images: Tensor of images to display (N, C, H, W).
         figsize: Size of the figure.
-        **kwargs: Additional keyword arguments for matplotlib.
     """
     num_images = images.shape[0]
     row_size = int(np.sqrt(num_images))

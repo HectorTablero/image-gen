@@ -10,7 +10,7 @@ import builtins
 import inspect
 import re
 from types import FunctionType
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Any
 
 # Third-party imports
 import dill.source
@@ -260,7 +260,7 @@ def _rename_class(source_code: str, old_name: str, new_name: str) -> str:
 class CustomClassWrapper:
     """Wrapper for dynamically loading and managing custom classes."""
 
-    def __init__(self, code: str, *args, class_name: Optional[str] = None, limit_globals: bool = True, **kwargs):
+    def __init__(self, code: str, *args: Any, class_name: Optional[str] = None, limit_globals: bool = True, **kwargs: Any):
         if class_name is None:
             pattern = r"class\s+(\w+)\s*\("
 
@@ -361,12 +361,3 @@ class CustomClassWrapper:
     @property
     def _class_name(self) -> str:
         return f"{self._original_class_name} (Custom Class)"
-
-    def __enter__(self):
-        if not self.loaded:
-            self._load_class()
-        return self._cls.__enter__()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.loaded:
-            return self._cls.__exit__(exc_type, exc_val, exc_tb)

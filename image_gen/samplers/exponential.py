@@ -7,11 +7,12 @@ numerical integration schemes.
 
 import torch
 from torch import Tensor
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Any
 
 from tqdm.autonotebook import tqdm
 
 from .base import BaseSampler
+from ..diffusion import BaseDiffusion
 
 
 class ExponentialIntegrator(BaseSampler):
@@ -30,11 +31,11 @@ class ExponentialIntegrator(BaseSampler):
 
     def __init__(
         self,
-        diffusion,
-        *args,
+        diffusion: BaseDiffusion,
+        *args: Any,
         lambda_param: float = 1.0,
         verbose: bool = True,
-        **kwargs
+        **kwargs: Any
     ):
         """Initialize the exponential integrator sampler.
 
@@ -54,20 +55,19 @@ class ExponentialIntegrator(BaseSampler):
         self,
         x_T: Tensor,
         score_model: Callable,
-        *args,
+        *_,
         n_steps: int = 500,
         seed: Optional[int] = None,
         callback: Optional[Callable[[Tensor, int], None]] = None,
         callback_frequency: int = 50,
         guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None,
-        **kwargs
-    ) -> Tuple[Tensor, Tensor]:
+        **__
+    ) -> Tensor:
         """Perform sampling using the exponential integrator method.
 
         Args:
             x_T: The initial noise tensor to start sampling from.
             score_model: The score model function that predicts the score.
-            *args: Additional positional arguments.
             n_steps: Number of sampling steps. Defaults to 500.
             seed: Random seed for reproducibility. Defaults to None.
             callback: Optional function called during sampling to monitor 
@@ -77,7 +77,6 @@ class ExponentialIntegrator(BaseSampler):
                 Defaults to 50.
             guidance: Optional guidance function for conditional sampling.
                 Defaults to None.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             A tuple containing the final sample tensor and the final sample
@@ -154,8 +153,7 @@ class ExponentialIntegrator(BaseSampler):
             if callback and i % callback_frequency == 0:
                 callback(x_t.detach().clone(), i)
 
-        # Return the final sample (duplicated for compatibility with interface)
-        return x_t, x_t
+        return x_t
 
     def config(self) -> dict:
         """Return the configuration of the sampler.

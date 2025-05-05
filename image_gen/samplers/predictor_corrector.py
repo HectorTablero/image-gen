@@ -7,11 +7,12 @@ Euler-Maruyama) with a corrector step based on Langevin dynamics.
 
 import torch
 from torch import Tensor
-from typing import Callable, Optional, Tuple, List, Union
+from typing import Callable, Optional, Tuple, Any
 
 from tqdm.autonotebook import tqdm
 
 from .base import BaseSampler
+from ..diffusion import BaseDiffusion
 
 
 class PredictorCorrector(BaseSampler):
@@ -29,12 +30,12 @@ class PredictorCorrector(BaseSampler):
 
     def __init__(
         self,
-        diffusion,
-        *args,
+        diffusion: BaseDiffusion,
+        *args: Any,
         verbose: bool = True,
         corrector_steps: int = 1,
         corrector_snr: float = 0.15,
-        **kwargs
+        **kwargs: Any
     ):
         """Initialize the Predictor-Corrector sampler.
 
@@ -59,8 +60,8 @@ class PredictorCorrector(BaseSampler):
             t_curr: Tensor,
             t_next: Tensor,
             score: Tensor,
-            *args,
-            **kwargs
+            *args: Any,
+            **kwargs: Any
     ) -> Tensor:
         """Perform a predictor step (similar to Euler-Maruyama).
 
@@ -95,8 +96,8 @@ class PredictorCorrector(BaseSampler):
             x_t: Tensor,
             t: Tensor,
             score_model: Callable,
-            *args,
-            **kwargs
+            *_,
+            **__
     ) -> Tensor:
         """Perform a corrector step based on Langevin dynamics.
 
@@ -104,8 +105,6 @@ class PredictorCorrector(BaseSampler):
             x_t: Current state tensor.
             t: Current time step.
             score_model: Model function that predicts the score.
-            *args: Additional positional arguments.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             Updated tensor after correction step.
@@ -162,20 +161,19 @@ class PredictorCorrector(BaseSampler):
             self,
             x_T: Tensor,
             score_model: Callable,
-            *args,
+            *_,
             n_steps: int = 500,
             seed: Optional[int] = None,
             callback: Optional[Callable[[Tensor, int], None]] = None,
             callback_frequency: int = 50,
             guidance: Optional[Callable[[Tensor, Tensor], Tensor]] = None,
-            **kwargs
-    ) -> Tuple[Tensor, Tensor]:
+            **__
+    ) -> Tensor:
         """Perform sampling using the predictor-corrector method.
 
         Args:
             x_T: The initial noise tensor to start sampling from.
             score_model: The score model function that predicts the score.
-            *args: Additional positional arguments.
             n_steps: Number of sampling steps. Defaults to 500.
             seed: Random seed for reproducibility. Defaults to None.
             callback: Optional function called during sampling to monitor 
@@ -185,7 +183,6 @@ class PredictorCorrector(BaseSampler):
                 Defaults to 50.
             guidance: Optional guidance function for conditional sampling.
                 Defaults to None.
-            **kwargs: Additional keyword arguments.
 
         Returns:
             A tuple containing the final sample tensor and the final sample
@@ -273,8 +270,7 @@ class PredictorCorrector(BaseSampler):
             if callback and i % callback_frequency == 0:
                 callback(x_t.detach().clone(), i)
 
-        # Return the final sample (duplicated for compatibility with interface)
-        return x_t, x_t
+        return x_t
 
     def config(self) -> dict:
         """Return the configuration of the sampler.

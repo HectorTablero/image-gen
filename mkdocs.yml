@@ -1,36 +1,89 @@
 site_name: Diffusion-Based Image Generation
 site_description: Documentation for diffusion-based image generation models
+repo_url: https://github.com/HectorTablero/image-gen
+repo_name: HectorTablero/image-gen
 
 theme:
   name: material
+  language: en
+  icon:
+    logo: material/image-area
+    repo: fontawesome/brands/git-alt
   palette:
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: orange
+      accent: orange
       toggle:
-        icon: material/weather-sunny
+        icon: material/brightness-7
         name: Switch to light mode
     
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: orange
+      accent: orange
       toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
+        icon: material/brightness-auto
+        name: Switch to system preference
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.instant.prefetch
+    - navigation.path
+    - navigation.prune
+    - navigation.top
+    # - navigation.tracking
+    - navigation.expand
+    - toc.follow
+    # - toc.integrate
 
 plugins:
   - search
   - mkdocstrings:
       default_handler: python
+  #- offline
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
 
 nav:
-  - Main: index.md
-  - Diffusion: diffusion.md
-  - Noise Schedules: noise.md
-  - Samplers: samplers.md
-  - Metrics: metrics.md
-  - Others: others.md
+  - Home: index.md
+  - API Reference:
+    - Generative Model: api/generative_model.md
+    - Diffusers: 
+      - Diffusion: api/diffusion/index.md
+      - Base Diffusion: api/diffusion/base.md
+      - Variance Exploding: api/diffusion/ve.md
+      - Variance Preserving: api/diffusion/vp.md
+      - Sub-Variance Preserving: api/diffusion/sub_vp.md
+    - Samplers:
+      - Samplers: api/samplers/index.md
+      - Base Sampler: api/samplers/base.md
+      - Euler-Maruyama: api/samplers/euler_maruyama.md
+      - Predictor-Corrector: api/samplers/predictor_corrector.md
+      - ODE Probability Flow: api/samplers/ode.md
+      - Exponential Integrator: api/samplers/exponential.md
+    - Noise Schedules:
+      - Noise Schedules: api/noise/index.md
+      - Base Noise Schedule: api/noise/base.md
+      - Linear Noise Schedule: api/noise/linear.md
+      - Cosine Noise Schedule: api/noise/cosine.md
+    - Metrics:
+      - Metrics: api/metrics/index.md
+      - Base Metric: api/metrics/base.md
+      - Bits Per Dimension: api/metrics/bpd.md
+      - Fréchet Inception Distance: api/metrics/fid.md
+      - Inception Score: api/metrics/inception.md
+  - Examples:
+    - Basic Usage: examples/basic_usage.md
+    - Conditional Generation: examples/conditional_generation.md
+    - Colorization: examples/colorization.md
+    - Imputation: examples/imputation.md
