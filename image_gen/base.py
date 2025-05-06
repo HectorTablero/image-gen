@@ -779,6 +779,23 @@ class GenerativeModel:
         return samples
 
     @staticmethod
+    def _rgb_to_grayscale(img: Tensor) -> Tensor:
+        """Convert RGB image tensor to grayscale.
+
+        Args:
+            img: Input tensor (B, 3, H, W) in range [0,1] or [-1,1]
+
+        Returns:
+            Grayscale tensor (B, 1, H, W)
+        """
+        if img.min() < 0:  # If in [-1,1] range, normalize to [0,1]
+            img = (img + 1) / 2
+
+        # Use standard RGB to grayscale conversion weights
+        gray = 0.2989 * img[:, 0] + 0.5870 * img[:, 1] + 0.1140 * img[:, 2]
+        return gray.unsqueeze(1)  # Add channel dimension
+
+    @staticmethod
     def _rgb_to_yuv(img: Tensor) -> Tensor:
         """Converts RGB tensor (B,3,H,W) to YUV (B,3,H,W).
 
@@ -839,7 +856,7 @@ class GenerativeModel:
         if mask.shape[1] != 1:
             raise ValueError("Mask must be single-channel")
 
-        batch_size, channels, _, _ = x.shape
+        batch_size, original_channels, _, _ = x.shape
 
         input_min = x.min()
         input_max = x.max()
@@ -847,9 +864,13 @@ class GenerativeModel:
         x_normalized = (x - input_min) / (input_max - input_min + 1e-8) * 2 - 1
         x_normalized = x_normalized.to(self.device)
 
+        # Convert to grayscale if model expects 1 channel but input has more
+        if self.num_channels == 1 and original_channels != 1:
+            x_normalized = x_normalized.mean(dim=1, keepdim=True)
+
         generate_mask = mask.to(self.device).bool()
         generate_mask = generate_mask.expand(-1,
-                                             channels, -1, -1).to(self.device)
+                                             1, -1, -1).to(self.device)
         preserve_mask = ~generate_mask
 
         with torch.no_grad():
@@ -859,16 +880,8 @@ class GenerativeModel:
             t_T = torch.ones(batch_size, device=self.device)
             x_T, _ = self.diffusion.forward_process(x_T, t_T)
 
-        def inpaint_guidance(x_t: Tensor, _: Tensor) -> Tensor:
-            """Preserves known pixels in the image during sampling.
-
-            Args:
-                x_t: Current image state.
-                _: Current time step (unused).
-
-            Returns:
-                Modified image with preserved pixels.
-            """
+        def inpaint_guidance(x_t: Tensor, t: Tensor) -> Tensor:
+            """Preserves known pixels in the image during sampling."""
             with torch.no_grad():
                 return torch.where(preserve_mask, x_normalized, x_t)
 
@@ -887,6 +900,7 @@ class GenerativeModel:
 
         combined_normalized = torch.where(
             generate_mask, samples_normalized, x_normalized)
+
         result = (combined_normalized + 1) / 2 * \
             (input_max - input_min) + input_min
 

@@ -31,6 +31,9 @@ sys.path.append('./..')
 NONE_LABEL = "(unset)"
 
 
+# TODO: Add a confirmation dialog before loading a model with custom classes
+
+
 def tensor_to_image(tensor: torch.Tensor) -> Image.Image:
     """
     Convert a PyTorch tensor to a PIL Image.

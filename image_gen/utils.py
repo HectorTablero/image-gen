@@ -293,7 +293,8 @@ class CustomClassWrapper:
             "globals",
             "help",
             "input",
-            "locals"
+            "locals",
+            "open"
         }
         safe_builtins = {k: getattr(builtins, k) for k in dir(
             builtins) if k not in unsafe_builtins}
