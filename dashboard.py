@@ -47,12 +47,9 @@ def get_directory_tree(start_path="."):
 
     return '\n'.join(result)
 
-
-tree = get_directory_tree()
-print(tree)
-
 # # Local application imports
 # sys.path.append('./..')
+
 
 # Load translations from JSON files in the dashboard/locales directory
 TRANSLATIONS = {}
@@ -392,6 +389,7 @@ def model_selection_v2() -> None:
 
         try:
             for fname in os.listdir(model_dir):
+                print("a", fname)
                 if not fname.endswith((".pt", ".pth")):
                     continue
 
