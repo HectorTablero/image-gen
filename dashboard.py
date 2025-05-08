@@ -22,6 +22,35 @@ import toml
 import torch
 from PIL import Image
 
+# debug
+from pathlib import Path
+
+
+def get_directory_tree(start_path="."):
+    """Returns a string showing the directory tree structure"""
+    result = []
+    start_path = Path(start_path).resolve()
+
+    for root, dirs, files in sorted(os.walk(start_path)):
+        # Calculate indentation level
+        level = len(Path(root).relative_to(start_path).parts)
+        indent = '  ' * level
+
+        # Add directory to result
+        dir_name = os.path.basename(root)
+        if level > 0:  # Skip the root directory name if we're starting from current dir
+            result.append(f"{indent}{dir_name}/")
+
+        # Add files to result
+        for f in sorted(files):
+            result.append(f"{indent}  {f}")
+
+    return '\n'.join(result)
+
+
+tree = get_directory_tree()
+print(tree)
+
 # # Local application imports
 # sys.path.append('./..')
 
