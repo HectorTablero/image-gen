@@ -1096,7 +1096,9 @@ class GenerativeModel:
         """
         self._model = None
 
-        checkpoint = torch.load(path)
+        # Determine the device to load the checkpoint
+        map_location = 'cuda' if torch.cuda.is_available() else 'cpu'
+        checkpoint = torch.load(path, map_location=map_location)
         self._version = checkpoint.get('model_version')
 
         self._custom_sampler = None
@@ -1161,7 +1163,9 @@ class GenerativeModel:
         """
         self._model = None
 
-        checkpoint = torch.load(path)
+        # Determine the device to load the checkpoint
+        map_location = 'cuda' if torch.cuda.is_available() else 'cpu'
+        checkpoint = torch.load(path, map_location=map_location)
         self._version = checkpoint.get('model_version')
 
         self._custom_sampler = None
