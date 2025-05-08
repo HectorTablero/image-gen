@@ -387,9 +387,11 @@ def model_selection_v2() -> None:
         models = []
         dummy_model = GenerativeModel(verbose=False)
 
+        print(f"Scanning directory: {model_dir}")
+        print(os.listdir(model_dir))
+
         try:
             for fname in os.listdir(model_dir):
-                print("a", fname)
                 if not fname.endswith((".pt", ".pth")):
                     continue
 
