@@ -62,7 +62,7 @@ class SubVariancePreserving(BaseDiffusion):
         integral_beta = self.schedule.integral_beta(t, *args, **kwargs)
         alpha_bar_t = torch.exp(-integral_beta).view(-1, 1, 1, 1)
         mu_x0 = torch.sqrt(alpha_bar_t) * x0
-        sigma_t = torch.sqrt(1 - alpha_bar_t)
+        sigma_t = 1 - alpha_bar_t
         noise = torch.randn_like(x0)
         xt = mu_x0 + sigma_t * noise
         return xt, noise
@@ -83,7 +83,7 @@ class SubVariancePreserving(BaseDiffusion):
         """
         integral_beta = self.schedule.integral_beta(t, *args, **kwargs)
         alpha_bar_t = torch.exp(-integral_beta)
-        sigma_t = torch.sqrt(1 - alpha_bar_t)
+        sigma_t = 1 - alpha_bar_t
         sigma_t = sigma_t.view(score.shape[0], *([1] * (score.dim() - 1)))
         loss = (sigma_t * score + noise) ** 2
         return loss.sum(dim=tuple(range(1, loss.dim())))

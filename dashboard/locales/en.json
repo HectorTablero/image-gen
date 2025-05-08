@@ -1,0 +1,161 @@
+{
+    "none_label": "(unset)",
+    "datasets": {
+        "mnist": "MNIST - Black and White Digits",
+        "cifar10": "CIFAR10 - Animals and Vehicles"
+    },
+    "diffusers": {
+        "ve": "Variance Exploding",
+        "vp": "Variance Preserving",
+        "svp": "Sub-Variance Preserving"
+    },
+    "noise": {
+        "linear": "Linear",
+        "cosine": "Cosine"
+    },
+    "samplers": {
+        "em": "Euler-Maruyama",
+        "exp": "Exponential Integrator",
+        "ode": "ODE Probability Flow",
+        "pred": "Predictor-Corrector"
+    },
+    "about": {
+        "1": "This dashboard offers an interactive way to manage and utilize generative models for image generation, colorization, and imputation.",
+        "2": "**Authors:** Álvaro Martínez Gamo, Héctor Tablero Díaz",
+        "3": "_The python module and dashboard were made as a project for the subject Aprendizaje Automático 3 (Machine Learning 3) in the [Data Science and Engineering](https://www.uam.es/uam/en/ingenieria-datos) degree at the Autonomous University of Madrid._",
+        "info": "Dashboard Information"
+    },
+    "selection": {
+        "title": "Model Selection",
+        "load": "Load Model",
+        "upload": "Upload model checkpoint · Will be copied into the model directory",
+        "loading": "Loading {}...",
+        "loaded": "Model saved and loaded from {}",
+        "invalid": "Invalid model file: {}",
+        "model_dir": "Model Directory",
+        "refresh": "Refresh Model List",
+        "available": "Available Models",
+        "load_selected": "Load Selected Model",
+        "errror": "Error loading model: {}",
+        "dir_not_found": "Model directory not found",
+        "create_dir": "Create Model Directory",
+        "loaded_success": "Model loaded successfully!",
+        "info": "Model Information",
+        "sampler_type": "Sampler Type",
+        "sampler_changed": "Sampler changed to {}",
+        "sampler_failed": "Failed to change sampler: {}",
+        "model_info": {
+            "name": "Model Name",
+            "num_channels": "Number of Channels",
+            "shape": "Input Shape",
+            "sampler": "Sampler Type",
+            "diffusion": "Diffusion Type",
+            "noise": "Noise Schedule",
+            "labels": "Labels",
+            "version": "Model Version"
+        },
+        "no_model": "No model loaded",
+        "v2": {
+            "title": "Model Management",
+            "model_dir": "Model directory",
+            "scan_models": "Scan Models",
+            "dataset": {
+                "label": "1. Choose Dataset",
+                "placeholder": "Select dataset..."
+            },
+            "diffuser": {
+                "label": "2. Choose Diffusion Type",
+                "placeholder": "Select diffuser..."
+            },
+            "noise": {
+                "label": "3. Choose Noise Schedule",
+                "placeholder": "Select noise schedule..."
+            },
+            "epochs": {
+                "label": "4. Choose Training Epochs",
+                "placeholder": "Select epoch count..."
+            },
+            "model_select": {
+                "label": "5. Select Specific Model",
+                "placeholder": "Choose exact model..."
+            },
+            "sampler": {
+                "label": "6. Select Sampler",
+                "placeholder": "Choose sampling method..."
+            },
+            "load_button": "Load Model",
+            "load_help": "Load selected model with chosen sampler",
+            "load_success": "Model loaded successfully!",
+            "no_models": "No valid models found matching current filters",
+            "invalid_model": "Invalid model file: {}"
+        }
+    },
+    "generation": {
+        "title": "Image Generation",
+        "no_model_warning": "Please load a model first from Model Management",
+        "settings_expander": "Generation Settings",
+        "num_images_slider": "Number of images",
+        "use_seed_checkbox": "Use fixed seed",
+        "seed_input": "Seed",
+        "steps_slider": "Sampling steps",
+        "show_progress_checkbox": "Show generation progress",
+        "class_selectbox": "Class conditioning",
+        "generate_button": "Generate Images",
+        "download_button": "Download Image {}",
+        "error_message": "Generation failed: {}"
+    },
+    "colorization": {
+        "title": "Colorization",
+        "no_model_warning": "Please load a model first from Model Management",
+        "unsupported_model_warning": "Model does not support colorization - please load a model with 3 channels (RGB)",
+        "settings_expander": "Colorization Settings",
+        "use_seed_checkbox": "Use fixed seed",
+        "seed_input": "Seed",
+        "steps_slider": "Sampling steps",
+        "show_progress_checkbox": "Show generation progress",
+        "class_selectbox": "Class conditioning",
+        "uploader_label": "Upload grayscale image",
+        "original_caption": "Original Grayscale",
+        "colorize_button": "Colorize Image",
+        "result_caption": "Colorized Result",
+        "download_button": "Download Colorized Image",
+        "error_message": "Colorization failed: {}"
+    },
+    "imputation": {
+        "title": "Imputation",
+        "no_model_warning": "Please load a model first from Model Management",
+        "settings_expander": "Imputation Settings",
+        "use_seed_checkbox": "Use fixed seed",
+        "seed_input": "Seed",
+        "steps_slider": "Sampling steps",
+        "show_progress_checkbox": "Show generation progress",
+        "class_selectbox": "Class conditioning",
+        "uploader_label": "Upload image with transparent areas to inpaint",
+        "no_transparency_warning": "No transparent areas detected - please upload an image with transparent regions to inpaint",
+        "original_caption": "<p style='text-align: center;'>Original Image with Transparency</p>",
+        "impute_button": "Impute Image",
+        "result_caption": "Imputed Result",
+        "download_button": "Download Imputed Image",
+        "error_message": "Imputation failed: {}"
+    },
+    "pages": {
+        "management": "Management",
+        "model_selection": "Model Selection",
+        "generation": "Generation",
+        "image_generation": "Image Generation",
+        "colorization": "Colorization",
+        "imputation": "Imputation"
+    },
+    "main": {
+        "page_title": "Image Generation Dashboard",
+        "language_selection": "Language",
+        "management_version": "Management Version",
+        "original": "Original",
+        "simplified": "Simplified"
+    },
+    "languages": {
+        "en": "English",
+        "es": "Español (Spanish)",
+        "cn": "中文 (Chinese)"
+    }
+}

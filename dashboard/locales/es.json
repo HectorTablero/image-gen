@@ -1,0 +1,161 @@
+{
+    "none_label": "(sin establecer)",
+    "datasets": {
+        "mnist": "MNIST - Dígitos en blanco y negro",
+        "cifar10": "CIFAR10 - Animales y Vehículos"
+    },
+    "diffusers": {
+        "ve": "Varianza Explosiva",
+        "vp": "Varianza Preservada",
+        "svp": "Sub-Varianza Preservada"
+    },
+    "noise": {
+        "linear": "Lineal",
+        "cosine": "Coseno"
+    },
+    "samplers": {
+        "em": "Euler-Maruyama",
+        "exp": "Integrador Exponencial",
+        "ode": "Flujo de Probabilidad ODE",
+        "pred": "Predictor-Corrector"
+    },
+    "about": {
+        "1": "Este panel ofrece una forma interactiva de gestionar y utilizar modelos generativos para generación de imágenes, colorización e imputación.",
+        "2": "**Autores:** Álvaro Martínez Gamo, Héctor Tablero Díaz",
+        "3": "_El módulo python y el panel fueron creados como proyecto para la asignatura Aprendizaje Automático 3 en el grado de [Ingeniería de Datos](https://www.uam.es/uam/en/ingenieria-datos) de la Universidad Autónoma de Madrid._",
+        "info": "Información del Panel"
+    },
+    "selection": {
+        "title": "Selección de Modelo",
+        "load": "Cargar Modelo",
+        "upload": "Subir checkpoint de modelo · Se copiará al directorio de modelos",
+        "loading": "Cargando {}...",
+        "loaded": "Modelo guardado y cargado desde {}",
+        "invalid": "Archivo de modelo inválido: {}",
+        "model_dir": "Directorio de Modelos",
+        "refresh": "Actualizar Lista de Modelos",
+        "available": "Modelos Disponibles",
+        "load_selected": "Cargar Modelo Seleccionado",
+        "errror": "Error al cargar el modelo: {}",
+        "dir_not_found": "Directorio de modelos no encontrado",
+        "create_dir": "Crear Directorio de Modelos",
+        "loaded_success": "¡Modelo cargado con éxito!",
+        "info": "Información del Modelo",
+        "sampler_type": "Tipo de Muestreador",
+        "sampler_changed": "Muestreador cambiado a {}",
+        "sampler_failed": "Fallo al cambiar el muestreador: {}",
+        "model_info": {
+            "name": "Nombre del Modelo",
+            "num_channels": "Número de Canales",
+            "shape": "Forma de Entrada",
+            "sampler": "Tipo de Muestreador",
+            "diffusion": "Tipo de Difusión",
+            "noise": "Programa de Ruido",
+            "labels": "Etiquetas",
+            "version": "Versión del Modelo"
+        },
+        "no_model": "Ningún modelo cargado",
+        "v2": {
+            "title": "Gestión de Modelos",
+            "model_dir": "Directorio de modelos",
+            "scan_models": "Escanear Modelos",
+            "dataset": {
+                "label": "1. Elegir Conjunto de Datos",
+                "placeholder": "Seleccionar conjunto de datos..."
+            },
+            "diffuser": {
+                "label": "2. Elegir Tipo de Difusión",
+                "placeholder": "Seleccionar difusor..."
+            },
+            "noise": {
+                "label": "3. Elegir Programa de Ruido",
+                "placeholder": "Seleccionar programa de ruido..."
+            },
+            "epochs": {
+                "label": "4. Elegir Épocas de Entrenamiento",
+                "placeholder": "Seleccionar número de épocas..."
+            },
+            "model_select": {
+                "label": "5. Seleccionar Modelo Específico",
+                "placeholder": "Elegir modelo exacto..."
+            },
+            "sampler": {
+                "label": "6. Seleccionar Muestreador",
+                "placeholder": "Elegir método de muestreo..."
+            },
+            "load_button": "Cargar Modelo",
+            "load_help": "Cargar modelo seleccionado con el muestreador elegido",
+            "load_success": "¡Modelo cargado con éxito!",
+            "no_models": "No se encontraron modelos válidos que coincidan con los filtros actuales",
+            "invalid_model": "Archivo de modelo inválido: {}"
+        }
+    },
+    "generation": {
+        "title": "Generación de Imágenes",
+        "no_model_warning": "Por favor, cargue un modelo primero desde Gestión de Modelos",
+        "settings_expander": "Configuración de Generación",
+        "num_images_slider": "Número de imágenes",
+        "use_seed_checkbox": "Usar semilla fija",
+        "seed_input": "Semilla",
+        "steps_slider": "Pasos de muestreo",
+        "show_progress_checkbox": "Mostrar progreso de generación",
+        "class_selectbox": "Condicionamiento por clase",
+        "generate_button": "Generar Imágenes",
+        "download_button": "Descargar Imagen {}",
+        "error_message": "Fallo en generación: {}"
+    },
+    "colorization": {
+        "title": "Colorización",
+        "no_model_warning": "Por favor, cargue un modelo primero desde Gestión de Modelos",
+        "unsupported_model_warning": "El modelo no soporta colorización - por favor cargue un modelo con 3 canales (RGB)",
+        "settings_expander": "Configuración de Colorización",
+        "use_seed_checkbox": "Usar semilla fija",
+        "seed_input": "Semilla",
+        "steps_slider": "Pasos de muestreo",
+        "show_progress_checkbox": "Mostrar progreso de generación",
+        "class_selectbox": "Condicionamiento por clase",
+        "uploader_label": "Subir imagen en escala de grises",
+        "original_caption": "Original en Escala de Grises",
+        "colorize_button": "Colorizar Imagen",
+        "result_caption": "Resultado Colorizado",
+        "download_button": "Descargar Imagen Colorizada",
+        "error_message": "Fallo en colorización: {}"
+    },
+    "imputation": {
+        "title": "Imputación",
+        "no_model_warning": "Por favor, cargue un modelo primero desde Gestión de Modelos",
+        "settings_expander": "Configuración de Imputación",
+        "use_seed_checkbox": "Usar semilla fija",
+        "seed_input": "Semilla",
+        "steps_slider": "Pasos de muestreo",
+        "show_progress_checkbox": "Mostrar progreso de generación",
+        "class_selectbox": "Condicionamiento por clase",
+        "uploader_label": "Subir imagen con áreas transparentes para rellenar",
+        "no_transparency_warning": "No se detectaron áreas transparentes - por favor suba una imagen con regiones transparentes para rellenar",
+        "original_caption": "<p style='text-align: center;'>Imagen Original con Transparencia</p>",
+        "impute_button": "Rellenar Imagen",
+        "result_caption": "Resultado Rellenado",
+        "download_button": "Descargar Imagen Rellenada",
+        "error_message": "Fallo en imputación: {}"
+    },
+    "pages": {
+        "management": "Gestión",
+        "model_selection": "Selección de Modelo",
+        "generation": "Generación",
+        "image_generation": "Generación de Imágenes",
+        "colorization": "Colorización",
+        "imputation": "Imputación"
+    },
+    "main": {
+        "page_title": "Panel de Generación de Imágenes",
+        "language_selection": "Idioma",
+        "management_version": "Versión de Gestión",
+        "original": "Original",
+        "simplified": "Simplificado"
+    },
+    "languages": {
+        "en": "Inglés (English)",
+        "es": "Español",
+        "cn": "Chino (中文)"
+    }
+}

@@ -1,0 +1,161 @@
+{
+    "none_label": "(未设置)",
+    "datasets": {
+        "mnist": "MNIST - 黑白数字",
+        "cifar10": "CIFAR10 - 动物与交通工具"
+    },
+    "diffusers": {
+        "ve": "方差爆炸",
+        "vp": "方差保持",
+        "svp": "亚方差保持"
+    },
+    "noise": {
+        "linear": "线性",
+        "cosine": "余弦"
+    },
+    "samplers": {
+        "em": "欧拉-丸山法",
+        "exp": "指数积分器",
+        "ode": "ODE概率流",
+        "pred": "预测校正器"
+    },
+    "about": {
+        "1": "本仪表板提供了一种交互式方式来管理和使用生成模型进行图像生成、着色和修复。",
+        "2": "**作者:** 阿尔瓦罗·马丁内斯·加莫, 赫克托·塔布勒罗·迪亚兹",
+        "3": "_该Python模块和仪表板是马德里自治大学[数据科学与工程](https://www.uam.es/uam/en/ingenieria-datos)学位课程《机器学习3》的项目成果。_",
+        "info": "仪表板信息"
+    },
+    "selection": {
+        "title": "模型选择",
+        "load": "加载模型",
+        "upload": "上传模型检查点 · 将被复制到模型目录",
+        "loading": "正在加载{}...",
+        "loaded": "模型已保存并从{}加载",
+        "invalid": "无效的模型文件: {}",
+        "model_dir": "模型目录",
+        "refresh": "刷新模型列表",
+        "available": "可用模型",
+        "load_selected": "加载选定模型",
+        "errror": "加载模型出错: {}",
+        "dir_not_found": "未找到模型目录",
+        "create_dir": "创建模型目录",
+        "loaded_success": "模型加载成功!",
+        "info": "模型信息",
+        "sampler_type": "采样器类型",
+        "sampler_changed": "采样器已更改为{}",
+        "sampler_failed": "更改采样器失败: {}",
+        "model_info": {
+            "name": "模型名称",
+            "num_channels": "通道数",
+            "shape": "输入形状",
+            "sampler": "采样器类型",
+            "diffusion": "扩散类型",
+            "noise": "噪声调度",
+            "labels": "标签",
+            "version": "模型版本"
+        },
+        "no_model": "未加载模型",
+        "v2": {
+            "title": "模型管理",
+            "model_dir": "模型目录",
+            "scan_models": "扫描模型",
+            "dataset": {
+                "label": "1. 选择数据集",
+                "placeholder": "选择数据集..."
+            },
+            "diffuser": {
+                "label": "2. 选择扩散类型",
+                "placeholder": "选择扩散器..."
+            },
+            "noise": {
+                "label": "3. 选择噪声调度",
+                "placeholder": "选择噪声调度..."
+            },
+            "epochs": {
+                "label": "4. 选择训练周期",
+                "placeholder": "选择周期数..."
+            },
+            "model_select": {
+                "label": "5. 选择特定模型",
+                "placeholder": "选择具体模型..."
+            },
+            "sampler": {
+                "label": "6. 选择采样器",
+                "placeholder": "选择采样方法..."
+            },
+            "load_button": "加载模型",
+            "load_help": "使用选定的采样器加载模型",
+            "load_success": "模型加载成功!",
+            "no_models": "未找到符合当前筛选条件的有效模型",
+            "invalid_model": "无效的模型文件: {}"
+        }
+    },
+    "generation": {
+        "title": "图像生成",
+        "no_model_warning": "请先从模型管理加载模型",
+        "settings_expander": "生成设置",
+        "num_images_slider": "图像数量",
+        "use_seed_checkbox": "使用固定种子",
+        "seed_input": "种子",
+        "steps_slider": "采样步数",
+        "show_progress_checkbox": "显示生成进度",
+        "class_selectbox": "类别条件",
+        "generate_button": "生成图像",
+        "download_button": "下载图像 {}",
+        "error_message": "生成失败: {}"
+    },
+    "colorization": {
+        "title": "图像着色",
+        "no_model_warning": "请先从模型管理加载模型",
+        "unsupported_model_warning": "模型不支持着色 - 请加载具有3个通道(RGB)的模型",
+        "settings_expander": "着色设置",
+        "use_seed_checkbox": "使用固定种子",
+        "seed_input": "种子",
+        "steps_slider": "采样步数",
+        "show_progress_checkbox": "显示生成进度",
+        "class_selectbox": "类别条件",
+        "uploader_label": "上传灰度图像",
+        "original_caption": "原始灰度图",
+        "colorize_button": "着色图像",
+        "result_caption": "着色结果",
+        "download_button": "下载着色图像",
+        "error_message": "着色失败: {}"
+    },
+    "imputation": {
+        "title": "图像修复",
+        "no_model_warning": "请先从模型管理加载模型",
+        "settings_expander": "修复设置",
+        "use_seed_checkbox": "使用固定种子",
+        "seed_input": "种子",
+        "steps_slider": "采样步数",
+        "show_progress_checkbox": "显示生成进度",
+        "class_selectbox": "类别条件",
+        "uploader_label": "上传带有透明区域的图像进行修复",
+        "no_transparency_warning": "未检测到透明区域 - 请上传带有透明区域的图像进行修复",
+        "original_caption": "<p style='text-align: center;'>带透明区域的原始图像</p>",
+        "impute_button": "修复图像",
+        "result_caption": "修复结果",
+        "download_button": "下载修复图像",
+        "error_message": "修复失败: {}"
+    },
+    "pages": {
+        "management": "管理",
+        "model_selection": "模型选择",
+        "generation": "生成",
+        "image_generation": "图像生成",
+        "colorization": "着色",
+        "imputation": "修复"
+    },
+    "main": {
+        "page_title": "图像生成仪表板",
+        "language_selection": "语言",
+        "management_version": "管理版本",
+        "original": "原始版",
+        "simplified": "简化版"
+    },
+    "languages": {
+        "en": "英语 (English)",
+        "es": "西班牙语 (Español)",
+        "cn": "中文"
+    }
+}

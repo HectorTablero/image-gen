@@ -476,9 +476,9 @@ class GenerativeModel:
 
                 avg_loss += loss.item() * x0.shape[0]
                 num_items += x0.shape[0]
-                # batch_bar.set_postfix(loss=loss.item())
+                batch_bar.set_postfix(loss=loss.item())
 
-            # epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
+            epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
 
     def set_labels(self, labels: List[str]) -> None:
         """Sets string labels for the model's classes.
@@ -1151,3 +1151,30 @@ class GenerativeModel:
                     f"Secondary error: {secondary_error}"
                 )
                 print(f"Warning: {error_msg}")
+
+    def _class_only_load(self, path: str) -> None:
+        """Loads the components of the model from the specified path.
+        Useful for getting data without loading the entire model.
+
+        Args:
+            path: Path to the saved model file.
+        """
+        self._model = None
+
+        checkpoint = torch.load(path)
+        self._version = checkpoint.get('model_version')
+
+        self._custom_sampler = None
+        self._custom_diffusion = None
+        self._custom_schedule = None
+        self._rebuild_diffusion(checkpoint, unsafe=True)
+
+        self._stored_labels = checkpoint.get('stored_labels')
+        self._num_classes = (
+            len(self.stored_labels) if self.stored_labels is not None else None
+        )
+        self._label_map = checkpoint.get('label_map')
+
+        # Default to grayscale if channels not specified
+        checkpoint_channels = checkpoint.get('num_channels', 1)
+        self._shape = checkpoint.get('shape', (32, 32))
