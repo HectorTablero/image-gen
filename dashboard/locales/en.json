@@ -27,6 +27,7 @@
     },
     "selection": {
         "title": "Model Selection",
+        "error": "Error loading model: {}",
         "load": "Load Model",
         "upload": "Upload model checkpoint · Will be copied into the model directory",
         "loading": "Loading {}...",

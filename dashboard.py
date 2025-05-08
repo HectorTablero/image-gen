@@ -26,31 +26,6 @@ from PIL import Image
 from pathlib import Path
 
 
-def get_directory_tree(start_path="."):
-    """Returns a string showing the directory tree structure"""
-    result = []
-    start_path = Path(start_path).resolve()
-
-    for root, dirs, files in sorted(os.walk(start_path)):
-        # Calculate indentation level
-        level = len(Path(root).relative_to(start_path).parts)
-        indent = '  ' * level
-
-        # Add directory to result
-        dir_name = os.path.basename(root)
-        if level > 0:  # Skip the root directory name if we're starting from current dir
-            result.append(f"{indent}{dir_name}/")
-
-        # Add files to result
-        for f in sorted(files):
-            result.append(f"{indent}  {f}")
-
-    return '\n'.join(result)
-
-# # Local application imports
-# sys.path.append('./..')
-
-
 # Load translations from JSON files in the dashboard/locales directory
 TRANSLATIONS = {}
 AVAILABLE_LANGUAGES = ["en", "es", "cn"]
@@ -427,9 +402,6 @@ def model_selection_v2() -> None:
             k: None for k in st.session_state.v2_filters}
 
     models = scan_models(model_dir)
-
-    print(f"Scanning directory: {model_dir}")
-    print(os.listdir(model_dir))
 
     # Dataset selection
     previous_dataset = st.session_state.v2_filters["dataset"]

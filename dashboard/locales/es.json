@@ -27,6 +27,7 @@
     },
     "selection": {
         "title": "Selección de Modelo",
+        "error": "Error al cargar el modelo: {}",
         "load": "Cargar Modelo",
         "upload": "Subir checkpoint de modelo · Se copiará al directorio de modelos",
         "loading": "Cargando {}...",
