@@ -387,9 +387,6 @@ def model_selection_v2() -> None:
         models = []
         dummy_model = GenerativeModel(verbose=False)
 
-        print(f"Scanning directory: {model_dir}")
-        print(os.listdir(model_dir))
-
         try:
             for fname in os.listdir(model_dir):
                 if not fname.endswith((".pt", ".pth")):
@@ -430,6 +427,9 @@ def model_selection_v2() -> None:
             k: None for k in st.session_state.v2_filters}
 
     models = scan_models(model_dir)
+
+    print(f"Scanning directory: {model_dir}")
+    print(os.listdir(model_dir))
 
     # Dataset selection
     previous_dataset = st.session_state.v2_filters["dataset"]
