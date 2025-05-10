@@ -476,9 +476,9 @@ class GenerativeModel:
 
                 avg_loss += loss.item() * x0.shape[0]
                 num_items += x0.shape[0]
-                batch_bar.set_postfix(loss=loss.item())
+                # batch_bar.set_postfix(loss=loss.item())
 
-            epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
+            # epoch_bar.set_postfix(avg_loss=avg_loss / num_items)
 
     def set_labels(self, labels: List[str]) -> None:
         """Sets string labels for the model's classes.
@@ -1083,7 +1083,7 @@ class GenerativeModel:
 
         return custom_components
 
-    def load(self, path: str, override: bool = True, unsafe: bool = False) -> None:
+    def load(self, path: str, override: bool = True, unsafe: bool = False, device: Literal["cpu", "cuda"] = "cuda") -> None:
         """Loads a saved model from the specified path.
 
         Args:
@@ -1097,8 +1097,12 @@ class GenerativeModel:
         self._model = None
 
         # Determine the device to load the checkpoint
-        map_location = 'cuda' if torch.cuda.is_available() else 'cpu'
-        checkpoint = torch.load(path, map_location=map_location)
+        map_location = 'cuda' if (
+            device == "cuda" and torch.cuda.is_available()) else 'cpu'
+        try:
+            checkpoint = torch.load(path, map_location=map_location)
+        except RuntimeError as e:
+            return self.load(path, override=override, unsafe=unsafe, device="cpu")
         self._version = checkpoint.get('model_version')
 
         self._custom_sampler = None
@@ -1164,8 +1168,7 @@ class GenerativeModel:
         self._model = None
 
         # Determine the device to load the checkpoint
-        map_location = 'cuda' if torch.cuda.is_available() else 'cpu'
-        checkpoint = torch.load(path, map_location=map_location)
+        checkpoint = torch.load(path, map_location="cpu")
         self._version = checkpoint.get('model_version')
 
         self._custom_sampler = None
