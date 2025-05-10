@@ -652,6 +652,9 @@ def generation() -> None:
         st.warning(t("generation.no_model_warning"))
         return
 
+    if st.session_state.model.device.type == "cpu":
+        st.warning(t("generation.no_gpu_warning"), icon=":material/warning:")
+
     # Get label map from model data
     label_map = st.session_state.model._label_map
 
@@ -873,6 +876,9 @@ def colorization() -> None:
         st.warning(t("colorization.unsupported_model_warning"))
         return
 
+    if st.session_state.model.device.type == "cpu":
+        st.warning(t("colorization.no_gpu_warning"), icon=":material/warning:")
+
     # Get label map from model data
     label_map = st.session_state.model._label_map
 
@@ -1048,6 +1054,9 @@ def imputation() -> None:
     if st.session_state.model is None:
         st.warning(t("imputation.no_model_warning"))
         return
+
+    if st.session_state.model.device.type == "cpu":
+        st.warning(t("imputation.no_gpu_warning"), icon=":material/warning:")
 
     # Get label map from model data
     label_map = st.session_state.model._label_map

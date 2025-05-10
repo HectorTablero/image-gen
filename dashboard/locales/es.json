@@ -103,7 +103,8 @@
         "class_selectbox": "Condicionamiento por clase",
         "generate_button": "Generar Imágenes",
         "download_button": "Descargar Imagen {}",
-        "error_message": "Fallo en generación: {}"
+        "error_message": "Fallo en generación: {}",
+        "no_gpu_warning": "No se detectó GPU - usando CPU para generación. Esto puede ser lento."
     },
     "colorization": {
         "title": "Colorización",
@@ -120,7 +121,8 @@
         "colorize_button": "Colorizar Imagen",
         "result_caption": "Resultado Colorizado",
         "download_button": "Descargar Imagen Colorizada",
-        "error_message": "Fallo en colorización: {}"
+        "error_message": "Fallo en colorización: {}",
+        "no_gpu_warning": "No se detectó GPU - usando CPU para colorización. Esto puede ser lento."
     },
     "imputation": {
         "title": "Imputación",
@@ -137,7 +139,8 @@
         "impute_button": "Rellenar Imagen",
         "result_caption": "Resultado Rellenado",
         "download_button": "Descargar Imagen Rellenada",
-        "error_message": "Fallo en imputación: {}"
+        "error_message": "Fallo en imputación: {}",
+        "no_gpu_warning": "No se detectó GPU - usando CPU para imputación. Esto puede ser lento."
     },
     "pages": {
         "management": "Gestión",

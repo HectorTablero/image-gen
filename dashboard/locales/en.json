@@ -103,7 +103,8 @@
         "class_selectbox": "Class conditioning",
         "generate_button": "Generate Images",
         "download_button": "Download Image {}",
-        "error_message": "Generation failed: {}"
+        "error_message": "Generation failed: {}",
+        "no_gpu_warning": "No GPU detected - using CPU for generation. This may be slow."
     },
     "colorization": {
         "title": "Colorization",
@@ -120,7 +121,8 @@
         "colorize_button": "Colorize Image",
         "result_caption": "Colorized Result",
         "download_button": "Download Colorized Image",
-        "error_message": "Colorization failed: {}"
+        "error_message": "Colorization failed: {}",
+        "no_gpu_warning": "No GPU detected - using CPU for colorization. This may be slow."
     },
     "imputation": {
         "title": "Imputation",
@@ -137,7 +139,8 @@
         "impute_button": "Impute Image",
         "result_caption": "Imputed Result",
         "download_button": "Download Imputed Image",
-        "error_message": "Imputation failed: {}"
+        "error_message": "Imputation failed: {}",
+        "no_gpu_warning": "No GPU detected - using CPU for imputation. This may be slow."
     },
     "pages": {
         "management": "Management",

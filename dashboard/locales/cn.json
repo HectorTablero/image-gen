@@ -103,7 +103,8 @@
         "class_selectbox": "类别条件",
         "generate_button": "生成图像",
         "download_button": "下载图像 {}",
-        "error_message": "生成失败: {}"
+        "error_message": "生成失败: {}",
+        "no_gpu_warning": "未检测到 GPU - 使用 CPU 进行生成。这可能会很慢。"
     },
     "colorization": {
         "title": "图像着色",
@@ -120,7 +121,8 @@
         "colorize_button": "着色图像",
         "result_caption": "着色结果",
         "download_button": "下载着色图像",
-        "error_message": "着色失败: {}"
+        "error_message": "着色失败: {}",
+        "no_gpu_warning": "未检测到 GPU - 使用 CPU 进行着色。这可能会很慢。"
     },
     "imputation": {
         "title": "图像修复",
@@ -137,7 +139,8 @@
         "impute_button": "修复图像",
         "result_caption": "修复结果",
         "download_button": "下载修复图像",
-        "error_message": "修复失败: {}"
+        "error_message": "修复失败: {}",
+        "no_gpu_warning": "未检测到 GPU - 使用 CPU 进行插补。这可能会很慢。"
     },
     "pages": {
         "management": "管理",
